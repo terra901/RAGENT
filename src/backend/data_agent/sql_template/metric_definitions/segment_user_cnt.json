@@ -1,0 +1,12 @@
+{
+  "metric_id": "segment_user_cnt",
+  "name": "分群用户数",
+  "default_unit": "user",
+  "aggregation": "sum",
+  "expr_by_table": {
+    "dws_v4_user_segment": "SUM(user_cnt)"
+  },
+  "description": "「分群用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 dws_v4_user_segment。sum 类指标按表达式聚合后直接输出。",
+  "business_context": "用于衡量用户分群规模或分群占比。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「segment_user_cnt」。"
+}

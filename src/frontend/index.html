@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAGENT</title>
+  <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/ui/styles.css?v=20260626-chatfix-1">
+  <link rel="stylesheet" href="/ui/layout.css?v=20260626-chatfix-1">
+  <script type="importmap">
+    {
+      "imports": {
+        "vue": "https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.esm-browser.prod.min.js"
+      }
+    }
+  </script>
+  <!-- Markdown 渲染：marked 解析 + DOMPurify XSS 净化。
+       两个都是 UMD 脚本，挂在 window.marked / window.DOMPurify。
+       composables/useMarkdown.js 通过全局变量读取；缺失时降级为纯文本 escape。-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.7/marked.min.js"
+          referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"
+          referrerpolicy="no-referrer"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/ui/app.js?v=20260626-chatfix-1"></script>
+</body>
+</html>

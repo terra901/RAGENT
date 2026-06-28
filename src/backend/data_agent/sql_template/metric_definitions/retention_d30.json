@@ -1,0 +1,21 @@
+{
+  "metric_id": "retention_d30",
+  "name": "D30 留存率",
+  "default_unit": "ratio",
+  "aggregation": "ratio",
+  "expr_by_table": {
+    "ads_op_game_overview_daily": "SUM(retain_d30_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+    "ads_buy_channel_roi_daily": "SUM(retain_d30_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+    "ads_material_daily": "SUM(retain_d30_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+    "ads_cohort_pivot": "SUM(retain_d30_cnt) / NULLIF(SUM(enter_user_cnt), 0)",
+    "dws_v4_cohort_user": "SUM(retain_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)",
+    "dws_v4_cohort_device": "SUM(retain_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)"
+  },
+  "recommended_filters": {
+    "dws_v4_cohort_user": "day_n = 30",
+    "dws_v4_cohort_device": "day_n = 30"
+  },
+  "description": "「D30 留存率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+  "business_context": "用于评估新增队列或运营口径留存，必须注意分母是新增用户、进入用户或设备队列。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「retention_d30」。"
+}

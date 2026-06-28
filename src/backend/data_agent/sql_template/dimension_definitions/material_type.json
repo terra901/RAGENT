@@ -1,0 +1,15 @@
+{
+  "dimension_id": "material_type",
+  "name": "素材类型",
+  "field_by_table": {
+    "ads_material_daily": "ad_material_type",
+    "ads_cohort_pivot": "ad_material_type"
+  },
+  "example_values": [
+    "video",
+    "image",
+    "text"
+  ],
+  "description": "用于按「素材类型」筛选、分组、排序或下钻的分类维度。字段映射覆盖 2 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+  "query_guidance": "当用户提到「素材类型」或其业务同义词时优先召回该维度；适用表范围：ads_material_daily、ads_cohort_pivot。"
+}

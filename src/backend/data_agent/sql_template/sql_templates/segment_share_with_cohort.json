@@ -1,0 +1,93 @@
+{
+  "template_name": "segment_share_with_cohort",
+  "name": "分群占队列比例查询",
+  "description": "用于把 dws_v4_user_segment 与 ads_cohort_pivot 关联，计算某类分群用户占进入队列的比例。",
+  "intent": "data_query",
+  "analysis_types": [
+    "segment",
+    "share",
+    "join",
+    "complex"
+  ],
+  "source_tables": [
+    "dws_v4_user_segment",
+    "ads_cohort_pivot"
+  ],
+  "required_slots": [
+    "segment_key",
+    "time"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [
+    "segment_user_cnt",
+    "segment_share_of_cohort",
+    "cohort_enter_user_cnt"
+  ],
+  "supported_dimensions": [
+    "date",
+    "parent_app",
+    "app",
+    "channel",
+    "segment_key"
+  ],
+  "related_questions": [
+    "自然量用户占比是多少？",
+    "高价值用户占新增用户比例是多少？",
+    "多账号风险用户在各游戏新增中占比多少？"
+  ],
+  "unsupported_cases": [],
+  "sql_params": [
+    "segment_group_fields",
+    "cohort_group_fields",
+    "start_date",
+    "end_date",
+    "segment_where_filters",
+    "cohort_where_filters",
+    "join_conditions",
+    "select_join_dimensions",
+    "order_by",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "WITH s AS (",
+    "  SELECT {{segment_group_fields}},",
+    "         SUM(user_cnt) AS segment_user_cnt",
+    "  FROM dws_v4_user_segment",
+    "  WHERE enter_date BETWEEN {{start_date}} AND {{end_date}}",
+    "    {{segment_where_filters}}",
+    "  GROUP BY {{segment_group_by_fields}}",
+    "), c AS (",
+    "  SELECT {{cohort_group_fields}},",
+    "         SUM(enter_user_cnt) AS enter_user_cnt",
+    "  FROM ads_cohort_pivot",
+    "  WHERE enter_date BETWEEN {{start_date}} AND {{end_date}}",
+    "    {{cohort_where_filters}}",
+    "  GROUP BY {{cohort_group_by_fields}}",
+    ")",
+    "SELECT {{select_join_dimensions}},",
+    "       s.segment_user_cnt,",
+    "       c.enter_user_cnt,",
+    "       s.segment_user_cnt / NULLIF(c.enter_user_cnt, 0) AS segment_share_of_cohort",
+    "FROM s",
+    "JOIN c ON {{join_conditions}}",
+    "{{order_by_clause}}",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "默认 join key: enter_date, papp_id, app_id, cch_id。",
+    "segment_share_of_cohort 是跨表派生指标，模板输出别名固定为 segment_share_of_cohort，对应 metric_definitions.segment_share_of_cohort.expr_by_template.segment_share_with_cohort。",
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 64,
+  "business_description": "分群占队列比例查询。用于把 dws_v4_user_segment 与 ads_cohort_pivot 关联，计算某类分群用户占进入队列的比例。 来源表：dws_v4_user_segment、ads_cohort_pivot；分析类型：segment、share、join、complex；支持 3 个指标和 5 个维度。",
+  "selection_guidance": "当用户问题需要segment、share、join、complex，且业务范围落在 dws_v4_user_segment、ads_cohort_pivot 时优先选择该模板。典型问题：自然量用户占比是多少？；高价值用户占新增用户比例是多少？；多账号风险用户在各游戏新增中占比多少？。",
+  "slot_guidance": "必填槽位：segment_key、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+}

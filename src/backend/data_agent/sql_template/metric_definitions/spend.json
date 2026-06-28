@@ -1,0 +1,13 @@
+{
+  "metric_id": "spend",
+  "name": "广告消耗",
+  "default_unit": "yuan",
+  "aggregation": "sum",
+  "expr_by_table": {
+    "ads_buy_channel_roi_daily": "SUM(spend)",
+    "dws_v4_ad_cost_daily": "SUM(cost_amt) / 100"
+  },
+  "description": "「广告消耗」指标，默认单位为 yuan，聚合方式为 sum。单表表达式适用于 ads_buy_channel_roi_daily、dws_v4_ad_cost_daily。sum 类指标按表达式聚合后直接输出。",
+  "business_context": "用于衡量广告消耗，注意 ADS 买量表的 spend 已是元，DWS 成本表 cost_amt 是分。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「spend」。"
+}

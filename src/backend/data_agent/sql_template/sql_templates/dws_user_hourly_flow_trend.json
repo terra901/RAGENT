@@ -1,0 +1,97 @@
+{
+  "template_name": "dws_user_hourly_flow_trend",
+  "name": "用户小时级流量趋势查询",
+  "description": "用于查询小时级登录、新增进入、注册、创角、付费、收入、首付转化、创角率等指标。",
+  "intent": "data_query",
+  "analysis_types": [
+    "hourly",
+    "trend",
+    "funnel",
+    "simple_metric"
+  ],
+  "source_tables": [
+    "dws_v4_user_daily"
+  ],
+  "required_slots": [
+    "metrics",
+    "time"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [
+    "dau",
+    "revenue",
+    "pay_user_cnt",
+    "pay_order_cnt",
+    "arpu",
+    "arppu",
+    "pay_rate",
+    "reg_user_cnt",
+    "new_role_cnt",
+    "first_pay_user_cnt",
+    "reg_to_first_pay_rate",
+    "role_create_rate"
+  ],
+  "supported_dimensions": [
+    "date",
+    "hour",
+    "parent_app",
+    "app",
+    "channel",
+    "app_type",
+    "md_traceid",
+    "ad_channel",
+    "ad_account",
+    "campaign",
+    "ad_group",
+    "creative",
+    "material",
+    "ad_position",
+    "finalization_status"
+  ],
+  "related_questions": [
+    "今天每小时 DAU 和收入趋势如何？",
+    "最近 7 天 ARPU 变化如何？",
+    "哪个广告素材带来的注册转首付率最好？",
+    "哪个时间段创角率最低？"
+  ],
+  "unsupported_cases": [],
+  "sql_params": [
+    "select_dimension_exprs",
+    "select_metric_exprs",
+    "source_table",
+    "time_field",
+    "time_range",
+    "where_filters",
+    "group_by_fields",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "SELECT",
+    "  {{select_dimension_exprs}}",
+    "  {{select_metric_exprs}}",
+    "FROM {{source_table}}",
+    "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+    "  {{where_filters}}",
+    "{{group_by_clause}}",
+    "{{having_clause}}",
+    "{{order_by_clause}}",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 80,
+  "business_description": "用户小时级流量趋势查询。用于查询小时级登录、新增进入、注册、创角、付费、收入、首付转化、创角率等指标。 来源表：dws_v4_user_daily；分析类型：hourly、trend、funnel、simple_metric；支持 12 个指标和 15 个维度。",
+  "selection_guidance": "当用户问题需要hourly、trend、funnel、simple_metric，且业务范围落在 dws_v4_user_daily 时优先选择该模板。典型问题：今天每小时 DAU 和收入趋势如何？；最近 7 天 ARPU 变化如何？；哪个广告素材带来的注册转首付率最好？。",
+  "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+}

@@ -1,0 +1,88 @@
+{
+  "template_name": "data_freshness_backfill_check",
+  "name": "数据回填与最终状态检查",
+  "description": "用于检查 ADS/DWS 表是否完成回填、是否为最终状态，以及生命周期指标是否已填充到指定天数。",
+  "intent": "data_query",
+  "analysis_types": [
+    "data_quality",
+    "freshness",
+    "backfill"
+  ],
+  "source_tables": [
+    "ads_op_game_overview_daily",
+    "ads_buy_channel_roi_daily",
+    "ads_cohort_pivot",
+    "dws_v4_ad_cost_daily",
+    "dws_v4_user_daily",
+    "dws_v4_device_daily"
+  ],
+  "required_slots": [
+    "source_table",
+    "time"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [],
+  "supported_dimensions": [
+    "date",
+    "parent_app",
+    "app",
+    "channel",
+    "business_company",
+    "ad_platform",
+    "material",
+    "finalization_status"
+  ],
+  "related_questions": [
+    "最近几天 D30 指标是否已经回填？",
+    "哪些广告消耗还没有最终结算？",
+    "运营日报哪些日期还不是最终状态？"
+  ],
+  "unsupported_cases": [],
+  "sql_params": [
+    "source_table",
+    "date_field",
+    "final_status_field",
+    "update_ts_field",
+    "group_fields",
+    "group_by_fields",
+    "optional_backfill_exprs",
+    "start_date",
+    "end_date",
+    "where_filters",
+    "having",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "SELECT",
+    "  {{date_field}} AS stat_or_enter_date,",
+    "  {{group_fields}}",
+    "  COUNT(*) AS row_cnt,",
+    "  MIN({{final_status_field}}) AS min_final_status,",
+    "  MAX({{final_status_field}}) AS max_final_status,",
+    "  {{optional_backfill_exprs}}",
+    "  MAX({{update_ts_field}}) AS last_update_ts",
+    "FROM {{source_table}}",
+    "WHERE {{date_field}} BETWEEN {{start_date}} AND {{end_date}}",
+    "  {{where_filters}}",
+    "GROUP BY {{date_field}}, {{group_by_fields}}",
+    "{{having_clause}}",
+    "ORDER BY {{date_field}} DESC",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "ads_buy_channel_roi_daily 可用 max_ltv_day_filled；ads_cohort_pivot 可用 max_day_filled；ads_op_game_overview_daily 可用 max_retain_day_filled。",
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 55,
+  "business_description": "数据回填与最终状态检查。用于检查 ADS/DWS 表是否完成回填、是否为最终状态，以及生命周期指标是否已填充到指定天数。 来源表：ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily；分析类型：data_quality、freshness、backfill；支持 0 个指标和 8 个维度。",
+  "selection_guidance": "当用户问题需要data_quality、freshness、backfill，且业务范围落在 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily 时优先选择该模板。典型问题：最近几天 D30 指标是否已经回填？；哪些广告消耗还没有最终结算？；运营日报哪些日期还不是最终状态？。",
+  "slot_guidance": "必填槽位：source_table、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+}

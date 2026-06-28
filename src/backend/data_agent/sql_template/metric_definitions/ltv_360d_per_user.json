@@ -1,0 +1,19 @@
+{
+  "metric_id": "ltv_360d_per_user",
+  "name": "D360 人均 LTV",
+  "default_unit": "yuan_per_user",
+  "aggregation": "ratio",
+  "expr_by_table": {
+    "ads_material_daily": "SUM(ltv_360d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)",
+    "ads_cohort_pivot": "SUM(ltv_360d) / 100 / NULLIF(SUM(enter_user_cnt), 0)",
+    "dws_v4_cohort_user": "SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_user_cnt), 0)",
+    "dws_v4_cohort_device": "SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_device_cnt), 0)"
+  },
+  "recommended_filters": {
+    "dws_v4_cohort_user": "day_n = 360",
+    "dws_v4_cohort_device": "day_n = 360"
+  },
+  "description": "「D360 人均 LTV」指标，默认单位为 yuan_per_user，聚合方式为 ratio。单表表达式适用于 ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+  "business_context": "用于评估新增用户生命周期价值，较新日期可能尚未完成长周期回填。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ltv_360d_per_user」。"
+}

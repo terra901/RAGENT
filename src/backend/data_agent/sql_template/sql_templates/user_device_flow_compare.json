@@ -1,0 +1,111 @@
+{
+  "template_name": "user_device_flow_compare",
+  "name": "用户与设备口径对比查询",
+  "description": "用于按日期、小时、游戏、渠道对比用户新增/登录与设备新增/激活，判断用户和设备口径是否匹配。",
+  "intent": "data_query",
+  "analysis_types": [
+    "compare",
+    "hourly",
+    "join",
+    "diagnostic"
+  ],
+  "source_tables": [
+    "dws_v4_user_daily",
+    "dws_v4_device_daily"
+  ],
+  "required_slots": [
+    "metrics",
+    "time"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [
+    "dau",
+    "revenue",
+    "reg_user_cnt",
+    "activate_cnt",
+    "new_device_cnt",
+    "ad_new_device_share",
+    "organic_new_device_share"
+  ],
+  "supported_dimensions": [
+    "date",
+    "hour",
+    "parent_app",
+    "app",
+    "channel",
+    "app_type",
+    "md_traceid",
+    "ad_channel",
+    "ad_account",
+    "campaign",
+    "ad_group",
+    "creative",
+    "material",
+    "ad_position"
+  ],
+  "related_questions": [
+    "设备新增和用户新增是否匹配？",
+    "某游戏今天每小时用户和设备趋势对比",
+    "哪个广告素材用户/设备新增比例异常？"
+  ],
+  "unsupported_cases": [],
+  "sql_params": [
+    "user_group_fields",
+    "device_group_fields",
+    "start_date",
+    "end_date",
+    "user_where_filters",
+    "device_where_filters",
+    "join_conditions",
+    "select_join_dimensions",
+    "order_by",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "WITH u AS (",
+    "  SELECT {{user_group_fields}}",
+    "         SUM(login_user_cnt) AS dau,",
+    "         SUM(new_enter_user_cnt) AS new_enter_user_cnt,",
+    "         SUM(reg_user_cnt) AS reg_user_cnt,",
+    "         SUM(trans_amt) / 100 AS revenue",
+    "  FROM dws_v4_user_daily",
+    "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+    "    {{user_where_filters}}",
+    "  GROUP BY {{user_group_by_fields}}",
+    "), d AS (",
+    "  SELECT {{device_group_fields}}",
+    "         SUM(activate_cnt) AS activate_cnt,",
+    "         SUM(new_device_cnt) AS new_device_cnt,",
+    "         SUM(ad_new_device_cnt) AS ad_new_device_cnt,",
+    "         SUM(organic_new_device_cnt) AS organic_new_device_cnt",
+    "  FROM dws_v4_device_daily",
+    "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+    "    {{device_where_filters}}",
+    "  GROUP BY {{device_group_by_fields}}",
+    ")",
+    "SELECT {{select_join_dimensions}},",
+    "       u.dau, u.new_enter_user_cnt, u.reg_user_cnt, u.revenue,",
+    "       d.activate_cnt, d.new_device_cnt, d.ad_new_device_cnt, d.organic_new_device_cnt,",
+    "       u.new_enter_user_cnt / NULLIF(d.new_device_cnt, 0) AS user_device_new_ratio",
+    "FROM u",
+    "JOIN d ON {{join_conditions}}",
+    "{{order_by_clause}}",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "join_conditions 默认按 stat_date/stat_hour/papp_id/app_id/cch_id 以及用户选择的共同广告维度连接。",
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 70,
+  "business_description": "用户与设备口径对比查询。用于按日期、小时、游戏、渠道对比用户新增/登录与设备新增/激活，判断用户和设备口径是否匹配。 来源表：dws_v4_user_daily、dws_v4_device_daily；分析类型：compare、hourly、join、diagnostic；支持 7 个指标和 14 个维度。",
+  "selection_guidance": "当用户问题需要compare、hourly、join、diagnostic，且业务范围落在 dws_v4_user_daily、dws_v4_device_daily 时优先选择该模板。典型问题：设备新增和用户新增是否匹配？；某游戏今天每小时用户和设备趋势对比；哪个广告素材用户/设备新增比例异常？。",
+  "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+}

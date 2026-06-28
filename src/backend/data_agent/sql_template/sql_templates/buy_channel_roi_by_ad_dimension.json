@@ -1,0 +1,100 @@
+{
+  "template_name": "buy_channel_roi_by_ad_dimension",
+  "name": "买量 ROI 按广告维度分析",
+  "description": "用于分析广告平台、投手账号、广告层级、游戏、渠道的消耗、新增、收入、D0/D7/D30 ROI 与留存。",
+  "intent": "data_query",
+  "analysis_types": [
+    "roi",
+    "ranking",
+    "breakdown",
+    "trend"
+  ],
+  "source_tables": [
+    "ads_buy_channel_roi_daily"
+  ],
+  "required_slots": [
+    "metrics",
+    "time"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [
+    "spend",
+    "platform_new_user_cnt",
+    "game_new_user_cnt",
+    "new_device_cnt",
+    "new_role_cnt",
+    "pay_user_cnt",
+    "first_pay_user_cnt",
+    "revenue",
+    "roi_d0",
+    "roi_d7",
+    "roi_d30",
+    "retention_d7",
+    "retention_d30",
+    "ltv_7d_per_user",
+    "ltv_30d_per_user"
+  ],
+  "supported_dimensions": [
+    "date",
+    "parent_app",
+    "app",
+    "channel",
+    "business_company",
+    "parent_team",
+    "child_team",
+    "buyer_account",
+    "ad_platform",
+    "campaign",
+    "ad_group",
+    "creative"
+  ],
+  "related_questions": [
+    "最近 30 天哪个广告平台 ROI 最高？",
+    "bytedance 在 2026 年 5 月的消耗、收入、ROI 分别是多少？",
+    "哪个投手账号 D7 ROI 最高？",
+    "D30 ROI 低于 1 的投放组合有哪些？"
+  ],
+  "unsupported_cases": [
+    "素材类型/广告版位分析优先使用 ads_material_daily",
+    "曝光点击 CTR/CVR 优先使用 dws_v4_ad_cost_daily"
+  ],
+  "sql_params": [
+    "select_dimension_exprs",
+    "select_metric_exprs",
+    "source_table",
+    "time_field",
+    "time_range",
+    "where_filters",
+    "group_by_fields",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "SELECT",
+    "  {{select_dimension_exprs}}",
+    "  {{select_metric_exprs}}",
+    "FROM {{source_table}}",
+    "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+    "  {{where_filters}}",
+    "{{group_by_clause}}",
+    "{{having_clause}}",
+    "{{order_by_clause}}",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 88,
+  "business_description": "买量 ROI 按广告维度分析。用于分析广告平台、投手账号、广告层级、游戏、渠道的消耗、新增、收入、D0/D7/D30 ROI 与留存。 来源表：ads_buy_channel_roi_daily；分析类型：roi、ranking、breakdown、trend；支持 15 个指标和 12 个维度。",
+  "selection_guidance": "当用户问题需要roi、ranking、breakdown、trend，且业务范围落在 ads_buy_channel_roi_daily 时优先选择该模板。典型问题：最近 30 天哪个广告平台 ROI 最高？；bytedance 在 2026 年 5 月的消耗、收入、ROI 分别是多少？；哪个投手账号 D7 ROI 最高？。",
+  "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。 不支持：素材类型/广告版位分析优先使用 ads_material_daily；曝光点击 CTR/CVR 优先使用 dws_v4_ad_cost_daily"
+}

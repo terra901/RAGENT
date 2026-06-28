@@ -1,0 +1,16 @@
+{
+  "metric_id": "roi_d0",
+  "name": "D0 ROI / 当日 ROI",
+  "default_unit": "ratio",
+  "aggregation": "ratio",
+  "expr_by_table": {
+    "ads_buy_channel_roi_daily": "SUM(pay_amt_sum) / 100 / NULLIF(SUM(spend), 0)"
+  },
+  "expr_by_template": {
+    "cost_to_user_funnel_join": "u.revenue / NULLIF(c.spend, 0)",
+    "material_cost_ltv_join": "m.revenue / NULLIF(c.spend, 0)"
+  },
+  "description": "「D0 ROI / 当日 ROI」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_buy_channel_roi_daily；模板级表达式适用于 cost_to_user_funnel_join、material_cost_ltv_join。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+  "business_context": "用于评估投放成本回收，金额字段按元口径输出，分单位字段已在表达式中除以 100。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「roi_d0」。"
+}

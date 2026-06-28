@@ -1,0 +1,15 @@
+{
+  "metric_id": "pay_order_cnt",
+  "name": "付费订单数",
+  "default_unit": "order",
+  "aggregation": "sum",
+  "expr_by_table": {
+    "ads_material_daily": "SUM(pay_order_cnt)",
+    "dws_v4_user_daily": "SUM(pay_order_cnt)",
+    "dws_v4_cohort_user": "SUM(day_n_pay_order_cnt)",
+    "dws_v4_cohort_device": "SUM(day_n_pay_order_cnt)"
+  },
+  "description": "「付费订单数」指标，默认单位为 order，聚合方式为 sum。单表表达式适用于 ads_material_daily、dws_v4_user_daily、dws_v4_cohort_user、dws_v4_cohort_device。sum 类指标按表达式聚合后直接输出。",
+  "business_context": "用于回答与「付费订单数」相关的排序、趋势、对比和汇总问题。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「pay_order_cnt」。"
+}

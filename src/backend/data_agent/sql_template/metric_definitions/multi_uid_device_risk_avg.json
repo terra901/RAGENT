@@ -1,0 +1,12 @@
+{
+  "metric_id": "multi_uid_device_risk_avg",
+  "name": "设备多账号风险均值",
+  "default_unit": "uid_per_device",
+  "aggregation": "ratio",
+  "expr_by_table": {
+    "dws_v4_cohort_device": "SUM(uid_cnt_on_device) / NULLIF(SUM(day_n_pay_device_cnt), 0)"
+  },
+  "description": "「设备多账号风险均值」指标，默认单位为 uid_per_device，聚合方式为 ratio。单表表达式适用于 dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+  "business_context": "用于回答与「设备多账号风险均值」相关的排序、趋势、对比和汇总问题。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「multi_uid_device_risk_avg」。"
+}

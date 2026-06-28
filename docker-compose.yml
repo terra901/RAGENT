@@ -1,0 +1,44 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: RAGENT-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "140617"
+      MYSQL_DATABASE: RAGENT
+      TZ: Asia/Shanghai
+    ports:
+      - "3307:3306"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - ragent_mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7.2
+    container_name: RAGENT-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "140617", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - ragent_redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: RAGENT-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ragent
+      RABBITMQ_DEFAULT_PASS: "140617"
+      RABBITMQ_DEFAULT_VHOST: ragent
+      TZ: Asia/Shanghai
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - ragent_rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  ragent_mysql_data:
+  ragent_redis_data:
+  ragent_rabbitmq_data:

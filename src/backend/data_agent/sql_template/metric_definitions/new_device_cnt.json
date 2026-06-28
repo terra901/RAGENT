@@ -1,0 +1,13 @@
+{
+  "metric_id": "new_device_cnt",
+  "name": "新设备数",
+  "default_unit": "device",
+  "aggregation": "sum",
+  "expr_by_table": {
+    "ads_buy_channel_roi_daily": "SUM(new_device_cnt)",
+    "dws_v4_device_daily": "SUM(new_device_cnt)"
+  },
+  "description": "「新设备数」指标，默认单位为 device，聚合方式为 sum。单表表达式适用于 ads_buy_channel_roi_daily、dws_v4_device_daily。sum 类指标按表达式聚合后直接输出。",
+  "business_context": "用于回答与「新设备数」相关的排序、趋势、对比和汇总问题。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「new_device_cnt」。"
+}

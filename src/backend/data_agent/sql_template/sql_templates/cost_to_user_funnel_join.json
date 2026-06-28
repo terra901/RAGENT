@@ -1,0 +1,122 @@
+{
+  "template_name": "cost_to_user_funnel_join",
+  "name": "广告成本到用户注册付费漏斗查询",
+  "description": "用于将 dws_v4_ad_cost_daily 与 dws_v4_user_daily 关联，分析消耗、曝光、点击、转化到注册、首付、收入、成本回收。",
+  "intent": "data_query",
+  "analysis_types": [
+    "join",
+    "funnel",
+    "cost",
+    "roi",
+    "complex"
+  ],
+  "source_tables": [
+    "dws_v4_ad_cost_daily",
+    "dws_v4_user_daily"
+  ],
+  "required_slots": [
+    "metrics",
+    "time"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [
+    "spend",
+    "impressions",
+    "clicks",
+    "platform_conversions",
+    "ctr",
+    "cvr",
+    "reg_user_cnt",
+    "first_pay_user_cnt",
+    "pay_user_cnt",
+    "revenue",
+    "roi_d0"
+  ],
+  "supported_dimensions": [
+    "date",
+    "parent_app",
+    "app",
+    "channel",
+    "md_traceid",
+    "ad_channel",
+    "ad_account",
+    "campaign",
+    "ad_group",
+    "creative",
+    "material",
+    "ad_position"
+  ],
+  "related_questions": [
+    "某广告账号从消耗到注册、付费的漏斗如何？",
+    "哪个素材首付成本最低？",
+    "哪个广告层级 D0 ROI 最高？"
+  ],
+  "unsupported_cases": [],
+  "sql_params": [
+    "cost_group_fields",
+    "user_group_fields",
+    "start_date",
+    "end_date",
+    "cost_where_filters",
+    "user_where_filters",
+    "join_conditions",
+    "select_join_dimensions",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "WITH c AS (",
+    "  SELECT {{cost_group_fields}},",
+    "         SUM(cost_amt) / 100 AS spend,",
+    "         SUM(impression_cnt) AS impressions,",
+    "         SUM(click_cnt) AS clicks,",
+    "         SUM(platform_convert_cnt) AS platform_conversions",
+    "  FROM dws_v4_ad_cost_daily",
+    "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+    "    {{cost_where_filters}}",
+    "  GROUP BY {{cost_group_by_fields}}",
+    "), u AS (",
+    "  SELECT {{user_group_fields}},",
+    "         SUM(new_enter_user_cnt) AS new_enter_user_cnt,",
+    "         SUM(reg_user_cnt) AS reg_user_cnt,",
+    "         SUM(first_pay_user_cnt) AS first_pay_user_cnt,",
+    "         SUM(pay_user_cnt) AS pay_user_cnt,",
+    "         SUM(trans_amt) / 100 AS revenue",
+    "  FROM dws_v4_user_daily",
+    "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+    "    {{user_where_filters}}",
+    "  GROUP BY {{user_group_by_fields}}",
+    ")",
+    "SELECT {{select_join_dimensions}},",
+    "       c.spend, c.impressions, c.clicks, c.platform_conversions,",
+    "       u.new_enter_user_cnt, u.reg_user_cnt, u.first_pay_user_cnt, u.pay_user_cnt, u.revenue,",
+    "       c.clicks / NULLIF(c.impressions, 0) AS ctr,",
+    "       c.platform_conversions / NULLIF(c.clicks, 0) AS cvr,",
+    "       c.spend / NULLIF(u.reg_user_cnt, 0) AS cost_per_reg_user,",
+    "       c.spend / NULLIF(u.first_pay_user_cnt, 0) AS cost_per_first_payer,",
+    "       u.revenue / NULLIF(c.spend, 0) AS roi_d0",
+    "FROM c",
+    "JOIN u ON {{join_conditions}}",
+    "{{having_clause}}",
+    "{{order_by_clause}}",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "dws_v4_ad_cost_daily 与 dws_v4_user_daily 推荐按 stat_date、papp_id、app_id、cch_id、md_traceid、ad_cch_id、ad_account_id、tg_level_1/2/3、ad_material_id、ad_position 等共同维度连接。",
+    "roi_d0 是跨表派生指标，模板输出别名固定为 roi_d0，对应 metric_definitions.roi_d0.expr_by_template.cost_to_user_funnel_join。",
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 68,
+  "business_description": "广告成本到用户注册付费漏斗查询。用于将 dws_v4_ad_cost_daily 与 dws_v4_user_daily 关联，分析消耗、曝光、点击、转化到注册、首付、收入、成本回收。 来源表：dws_v4_ad_cost_daily、dws_v4_user_daily；分析类型：join、funnel、cost、roi、complex；支持 11 个指标和 12 个维度。",
+  "selection_guidance": "当用户问题需要join、funnel、cost、roi、complex，且业务范围落在 dws_v4_ad_cost_daily、dws_v4_user_daily 时优先选择该模板。典型问题：某广告账号从消耗到注册、付费的漏斗如何？；哪个素材首付成本最低？；哪个广告层级 D0 ROI 最高？。",
+  "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+}

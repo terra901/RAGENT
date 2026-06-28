@@ -1,0 +1,2700 @@
+{
+  "registry_name": "ragent_sql_template_registry",
+  "version": "0.1.0",
+  "language": "zh-CN",
+  "design_principles": [
+    "SQL 模板、指标定义、维度定义分离；模板通过 metric_id 与 dimension_id 引用口径。",
+    "金额字段默认转成元输出；除 ads_buy_channel_roi_daily.spend 已是元外，大多数金额字段为分，需要 /100。",
+    "MySQL 中的 *_bitmap 与 user_bitmap 是 LONGBLOB 占位，不作为直接计算字段，优先使用对应计数字段。",
+    "ADS 表优先服务业务查询；DWS V4 表优先服务小时级、明细归因、生命周期、分群等细粒度查询。"
+  ],
+  "tables": [
+    {
+      "table_name": "ads_op_game_overview_daily",
+      "layer": "ADS",
+      "grain": "stat_date + papp_id + app_id + cch_id + bus_company_id",
+      "best_for": [
+        "运营总览",
+        "DAU/收入/ARPU/付费率",
+        "游戏整体留存"
+      ]
+    },
+    {
+      "table_name": "ads_buy_channel_roi_daily",
+      "layer": "ADS",
+      "grain": "stat_date + game/channel/company/team/ad_platform/ad_level",
+      "best_for": [
+        "买量 ROI",
+        "广告平台表现",
+        "投手/广告层级表现"
+      ]
+    },
+    {
+      "table_name": "ads_material_daily",
+      "layer": "ADS",
+      "grain": "stat_date + game + ad_platform + material + position",
+      "best_for": [
+        "素材效果",
+        "素材 LTV",
+        "素材留存",
+        "素材付费率"
+      ]
+    },
+    {
+      "table_name": "ads_cohort_pivot",
+      "layer": "ADS",
+      "grain": "enter_date + game/channel/ad_dimension/user_type",
+      "best_for": [
+        "生命周期宽表",
+        "D1-D360 留存",
+        "LTV",
+        "累计付费"
+      ]
+    },
+    {
+      "table_name": "dws_v4_ad_cost_daily",
+      "layer": "DWS",
+      "grain": "stat_date + game + md_traceid + ad_platform/account/level/material",
+      "best_for": [
+        "广告消耗",
+        "曝光点击转化",
+        "CTR/CVR/CPM/CPC/CPA"
+      ]
+    },
+    {
+      "table_name": "dws_v4_user_daily",
+      "layer": "DWS",
+      "grain": "stat_date + stat_hour + game + ad_attribution",
+      "best_for": [
+        "小时级用户流量",
+        "登录/注册/创角/付费漏斗"
+      ]
+    },
+    {
+      "table_name": "dws_v4_device_daily",
+      "layer": "DWS",
+      "grain": "stat_date + stat_hour + game + ad_attribution",
+      "best_for": [
+        "小时级设备流量",
+        "新设备/广告设备/自然设备"
+      ]
+    },
+    {
+      "table_name": "dws_v4_cohort_user",
+      "layer": "DWS",
+      "grain": "enter_date + enter_hour + game + ad_attribution + day_n",
+      "best_for": [
+        "用户生命周期明细",
+        "day_n 留存/LTV",
+        "D0 到 DN 累计收入"
+      ]
+    },
+    {
+      "table_name": "dws_v4_cohort_device",
+      "layer": "DWS",
+      "grain": "enter_date + enter_hour + game + ad_attribution + day_n",
+      "best_for": [
+        "设备生命周期明细",
+        "设备留存/LTV",
+        "多账号设备风险"
+      ]
+    },
+    {
+      "table_name": "dws_v4_user_segment",
+      "layer": "DWS",
+      "grain": "enter_date + game + channel + segment_key",
+      "best_for": [
+        "用户分群规模",
+        "高价值用户",
+        "留存用户",
+        "风险用户"
+      ]
+    }
+  ],
+  "dimension_definitions": [
+    {
+      "dimension_id": "date",
+      "name": "日期",
+      "semantic_type": "time",
+      "field_by_table": {
+        "ads_op_game_overview_daily": "stat_date",
+        "ads_buy_channel_roi_daily": "stat_date",
+        "ads_material_daily": "stat_date",
+        "dws_v4_ad_cost_daily": "stat_date",
+        "dws_v4_user_daily": "stat_date",
+        "dws_v4_device_daily": "stat_date",
+        "ads_cohort_pivot": "enter_date",
+        "dws_v4_cohort_user": "enter_date",
+        "dws_v4_cohort_device": "enter_date",
+        "dws_v4_user_segment": "enter_date"
+      },
+      "description": "用于按「日期」筛选、分组、排序或下钻的时间维度。字段映射覆盖 10 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「日期」或其业务同义词时优先召回该维度；适用表范围：ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、dws_v4_ad_cost_daily、dws_v4_user_daily 等。"
+    },
+    {
+      "dimension_id": "hour",
+      "name": "小时",
+      "semantic_type": "time",
+      "field_by_table": {
+        "dws_v4_user_daily": "stat_hour",
+        "dws_v4_device_daily": "stat_hour",
+        "dws_v4_cohort_user": "enter_hour",
+        "dws_v4_cohort_device": "enter_hour"
+      },
+      "description": "用于按「小时」筛选、分组、排序或下钻的时间维度。字段映射覆盖 4 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「小时」或其业务同义词时优先召回该维度；适用表范围：dws_v4_user_daily、dws_v4_device_daily、dws_v4_cohort_user、dws_v4_cohort_device。"
+    },
+    {
+      "dimension_id": "parent_app",
+      "name": "主游戏",
+      "field_by_table": {
+        "*": "papp_id"
+      },
+      "description": "用于按「主游戏」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「主游戏」或其业务同义词时优先召回该维度；适用表范围：所有包含通用字段的业务表。"
+    },
+    {
+      "dimension_id": "app",
+      "name": "子游戏",
+      "field_by_table": {
+        "*": "app_id"
+      },
+      "description": "用于按「子游戏」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「子游戏」或其业务同义词时优先召回该维度；适用表范围：所有包含通用字段的业务表。"
+    },
+    {
+      "dimension_id": "channel",
+      "name": "渠道商",
+      "field_by_table": {
+        "*": "cch_id"
+      },
+      "description": "用于按「渠道商」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「渠道商」或其业务同义词时优先召回该维度；适用表范围：所有包含通用字段的业务表。"
+    },
+    {
+      "dimension_id": "business_company",
+      "name": "业务公司",
+      "field_by_table": {
+        "ads_op_game_overview_daily": "bus_company_id",
+        "ads_buy_channel_roi_daily": "bus_company_id",
+        "ads_material_daily": "bus_company_id",
+        "ads_cohort_pivot": "bus_company_id"
+      },
+      "description": "用于按「业务公司」筛选、分组、排序或下钻的分类维度。字段映射覆盖 4 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「业务公司」或其业务同义词时优先召回该维度；适用表范围：ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot。"
+    },
+    {
+      "dimension_id": "app_type",
+      "name": "游戏类型",
+      "field_by_table": {
+        "dws_v4_user_daily": "app_type",
+        "dws_v4_device_daily": "app_type",
+        "dws_v4_cohort_user": "app_type",
+        "dws_v4_cohort_device": "app_type"
+      },
+      "description": "用于按「游戏类型」筛选、分组、排序或下钻的分类维度。字段映射覆盖 4 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「游戏类型」或其业务同义词时优先召回该维度；适用表范围：dws_v4_user_daily、dws_v4_device_daily、dws_v4_cohort_user、dws_v4_cohort_device。"
+    },
+    {
+      "dimension_id": "ad_platform",
+      "name": "广告平台",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "ad_pmedia",
+        "ads_material_daily": "ad_pmedia",
+        "ads_cohort_pivot": "ad_pmedia",
+        "dws_v4_ad_cost_daily": "ad_pmedia"
+      },
+      "example_values": [
+        "bytedance",
+        "tencent",
+        "meta",
+        "google",
+        "organic"
+      ],
+      "description": "用于按「广告平台」筛选、分组、排序或下钻的分类维度。字段映射覆盖 4 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告平台」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily。"
+    },
+    {
+      "dimension_id": "ad_channel",
+      "name": "广告渠道 ID",
+      "field_by_table": {
+        "ads_material_daily": "ad_cch_id",
+        "ads_cohort_pivot": "ad_cch_id",
+        "dws_v4_ad_cost_daily": "ad_cch_id",
+        "dws_v4_user_daily": "ad_cch_id",
+        "dws_v4_device_daily": "ad_cch_id",
+        "dws_v4_cohort_user": "ad_cch_id",
+        "dws_v4_cohort_device": "ad_cch_id"
+      },
+      "description": "用于按「广告渠道 ID」筛选、分组、排序或下钻的分类维度。字段映射覆盖 7 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告渠道 ID」或其业务同义词时优先召回该维度；适用表范围：ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily 等。"
+    },
+    {
+      "dimension_id": "md_traceid",
+      "name": "广告追踪码",
+      "field_by_table": {
+        "dws_v4_ad_cost_daily": "md_traceid",
+        "dws_v4_user_daily": "md_traceid",
+        "dws_v4_device_daily": "md_traceid",
+        "dws_v4_cohort_user": "md_traceid",
+        "dws_v4_cohort_device": "md_traceid"
+      },
+      "description": "用于按「广告追踪码」筛选、分组、排序或下钻的分类维度。字段映射覆盖 5 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告追踪码」或其业务同义词时优先召回该维度；适用表范围：dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily、dws_v4_cohort_user、dws_v4_cohort_device。"
+    },
+    {
+      "dimension_id": "ad_account",
+      "name": "广告账号",
+      "field_by_table": {
+        "dws_v4_ad_cost_daily": "ad_account_id",
+        "dws_v4_user_daily": "ad_account_id",
+        "dws_v4_device_daily": "ad_account_id",
+        "dws_v4_cohort_user": "ad_account_id",
+        "dws_v4_cohort_device": "ad_account_id"
+      },
+      "description": "用于按「广告账号」筛选、分组、排序或下钻的分类维度。字段映射覆盖 5 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告账号」或其业务同义词时优先召回该维度；适用表范围：dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily、dws_v4_cohort_user、dws_v4_cohort_device。"
+    },
+    {
+      "dimension_id": "buyer_account",
+      "name": "投手账号",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "md_vid"
+      },
+      "description": "用于按「投手账号」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「投手账号」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily。"
+    },
+    {
+      "dimension_id": "parent_team",
+      "name": "父投放团队",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "ptid"
+      },
+      "description": "用于按「父投放团队」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「父投放团队」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily。"
+    },
+    {
+      "dimension_id": "child_team",
+      "name": "子投放团队",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "rctid"
+      },
+      "description": "用于按「子投放团队」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「子投放团队」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily。"
+    },
+    {
+      "dimension_id": "campaign",
+      "name": "广告层级 1 / 计划",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "tg_level_1",
+        "ads_material_daily": "tg_level_1",
+        "ads_cohort_pivot": "tg_level_1",
+        "dws_v4_ad_cost_daily": "tg_level_1",
+        "dws_v4_user_daily": "tg_level_1",
+        "dws_v4_device_daily": "tg_level_1",
+        "dws_v4_cohort_user": "tg_level_1",
+        "dws_v4_cohort_device": "tg_level_1"
+      },
+      "description": "用于按「广告层级 1 / 计划」筛选、分组、排序或下钻的分类维度。字段映射覆盖 8 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告层级 1 / 计划」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily 等。"
+    },
+    {
+      "dimension_id": "ad_group",
+      "name": "广告层级 2 / 广告组",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "tg_level_2",
+        "ads_material_daily": "tg_level_2",
+        "ads_cohort_pivot": "tg_level_2",
+        "dws_v4_ad_cost_daily": "tg_level_2",
+        "dws_v4_user_daily": "tg_level_2",
+        "dws_v4_device_daily": "tg_level_2",
+        "dws_v4_cohort_user": "tg_level_2",
+        "dws_v4_cohort_device": "tg_level_2"
+      },
+      "description": "用于按「广告层级 2 / 广告组」筛选、分组、排序或下钻的分类维度。字段映射覆盖 8 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告层级 2 / 广告组」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily 等。"
+    },
+    {
+      "dimension_id": "creative",
+      "name": "广告层级 3 / 创意",
+      "field_by_table": {
+        "ads_buy_channel_roi_daily": "tg_level_3",
+        "ads_material_daily": "tg_level_3",
+        "ads_cohort_pivot": "tg_level_3",
+        "dws_v4_ad_cost_daily": "tg_level_3",
+        "dws_v4_user_daily": "tg_level_3",
+        "dws_v4_device_daily": "tg_level_3",
+        "dws_v4_cohort_user": "tg_level_3",
+        "dws_v4_cohort_device": "tg_level_3"
+      },
+      "description": "用于按「广告层级 3 / 创意」筛选、分组、排序或下钻的分类维度。字段映射覆盖 8 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告层级 3 / 创意」或其业务同义词时优先召回该维度；适用表范围：ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily 等。"
+    },
+    {
+      "dimension_id": "material",
+      "name": "广告素材",
+      "field_by_table": {
+        "ads_material_daily": "ad_material_id",
+        "ads_cohort_pivot": "ad_material_id",
+        "dws_v4_ad_cost_daily": "ad_material_id",
+        "dws_v4_user_daily": "ad_material_id",
+        "dws_v4_device_daily": "ad_material_id",
+        "dws_v4_cohort_user": "ad_material_id",
+        "dws_v4_cohort_device": "ad_material_id"
+      },
+      "description": "用于按「广告素材」筛选、分组、排序或下钻的分类维度。字段映射覆盖 7 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告素材」或其业务同义词时优先召回该维度；适用表范围：ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily 等。"
+    },
+    {
+      "dimension_id": "material_type",
+      "name": "素材类型",
+      "field_by_table": {
+        "ads_material_daily": "ad_material_type",
+        "ads_cohort_pivot": "ad_material_type"
+      },
+      "example_values": [
+        "video",
+        "image",
+        "text"
+      ],
+      "description": "用于按「素材类型」筛选、分组、排序或下钻的分类维度。字段映射覆盖 2 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「素材类型」或其业务同义词时优先召回该维度；适用表范围：ads_material_daily、ads_cohort_pivot。"
+    },
+    {
+      "dimension_id": "ad_position",
+      "name": "广告版位",
+      "field_by_table": {
+        "ads_material_daily": "ad_position",
+        "ads_cohort_pivot": "ad_position",
+        "dws_v4_ad_cost_daily": "ad_position",
+        "dws_v4_user_daily": "ad_position",
+        "dws_v4_device_daily": "ad_position",
+        "dws_v4_cohort_user": "ad_position",
+        "dws_v4_cohort_device": "ad_position"
+      },
+      "description": "用于按「广告版位」筛选、分组、排序或下钻的分类维度。字段映射覆盖 7 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告版位」或其业务同义词时优先召回该维度；适用表范围：ads_material_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily 等。"
+    },
+    {
+      "dimension_id": "ad_link",
+      "name": "广告链路",
+      "field_by_table": {
+        "ads_material_daily": "ad_link_id",
+        "ads_cohort_pivot": "ad_link_id"
+      },
+      "description": "用于按「广告链路」筛选、分组、排序或下钻的分类维度。字段映射覆盖 2 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「广告链路」或其业务同义词时优先召回该维度；适用表范围：ads_material_daily、ads_cohort_pivot。"
+    },
+    {
+      "dimension_id": "is_platform_new_user",
+      "name": "是否平台新用户",
+      "field_by_table": {
+        "ads_cohort_pivot": "is_platform_new_user"
+      },
+      "description": "用于按「是否平台新用户」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「是否平台新用户」或其业务同义词时优先召回该维度；适用表范围：ads_cohort_pivot。"
+    },
+    {
+      "dimension_id": "day_n",
+      "name": "生命周期第 N 天",
+      "field_by_table": {
+        "dws_v4_cohort_user": "day_n",
+        "dws_v4_cohort_device": "day_n"
+      },
+      "description": "用于按「生命周期第 N 天」筛选、分组、排序或下钻的分类维度。字段映射覆盖 2 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「生命周期第 N 天」或其业务同义词时优先召回该维度；适用表范围：dws_v4_cohort_user、dws_v4_cohort_device。"
+    },
+    {
+      "dimension_id": "segment_key",
+      "name": "用户分群标签",
+      "field_by_table": {
+        "dws_v4_user_segment": "segment_key"
+      },
+      "example_values": [
+        "new_payer_d7",
+        "high_value_user",
+        "retained_d7",
+        "organic_user",
+        "risk_multi_uid_device"
+      ],
+      "description": "用于按「用户分群标签」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「用户分群标签」或其业务同义词时优先召回该维度；适用表范围：dws_v4_user_segment。"
+    },
+    {
+      "dimension_id": "currency",
+      "name": "货币",
+      "field_by_table": {
+        "dws_v4_ad_cost_daily": "currency"
+      },
+      "description": "用于按「货币」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「货币」或其业务同义词时优先召回该维度；适用表范围：dws_v4_ad_cost_daily。"
+    },
+    {
+      "dimension_id": "finalization_status",
+      "name": "数据回填/最终状态",
+      "field_by_table": {
+        "ads_op_game_overview_daily": "is_finalized",
+        "ads_cohort_pivot": "is_finalized",
+        "dws_v4_ad_cost_daily": "is_finalized",
+        "dws_v4_user_daily": "is_finalized",
+        "dws_v4_device_daily": "is_finalized"
+      },
+      "description": "用于按「数据回填/最终状态」筛选、分组、排序或下钻的分类维度。字段映射覆盖 5 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+      "query_guidance": "当用户提到「数据回填/最终状态」或其业务同义词时优先召回该维度；适用表范围：ads_op_game_overview_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily。"
+    }
+  ],
+  "metric_definitions": [
+    {
+      "metric_id": "dau",
+      "name": "日活跃用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(dau)",
+        "dws_v4_user_daily": "SUM(login_user_cnt)"
+      },
+      "description": "「日活跃用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、dws_v4_user_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「日活跃用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「dau」。"
+    },
+    {
+      "metric_id": "dar",
+      "name": "日活跃角色数",
+      "default_unit": "role",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(dar)"
+      },
+      "description": "「日活跃角色数」指标，默认单位为 role，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「日活跃角色数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「dar」。"
+    },
+    {
+      "metric_id": "login_cnt",
+      "name": "登录次数",
+      "default_unit": "count",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(login_cnt)"
+      },
+      "description": "「登录次数」指标，默认单位为 count，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「登录次数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「login_cnt」。"
+    },
+    {
+      "metric_id": "revenue",
+      "name": "收入",
+      "default_unit": "yuan",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(pay_amt_sum) / 100",
+        "ads_buy_channel_roi_daily": "SUM(pay_amt_sum) / 100",
+        "ads_material_daily": "SUM(pay_amt_sum) / 100",
+        "dws_v4_user_daily": "SUM(trans_amt) / 100"
+      },
+      "description": "「收入」指标，默认单位为 yuan，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、dws_v4_user_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于衡量收入，表达式已按元口径输出。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「revenue」。"
+    },
+    {
+      "metric_id": "statistical_revenue",
+      "name": "统计收入",
+      "default_unit": "yuan",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(statistical_pay_amt_sum) / 100",
+        "ads_material_daily": "SUM(statistical_pay_amt_sum) / 100"
+      },
+      "description": "「统计收入」指标，默认单位为 yuan，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_material_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于衡量收入，表达式已按元口径输出。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「statistical_revenue」。"
+    },
+    {
+      "metric_id": "refund_amount",
+      "name": "退款金额",
+      "default_unit": "yuan",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(refund_amt_sum) / 100"
+      },
+      "description": "「退款金额」指标，默认单位为 yuan，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「退款金额」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「refund_amount」。"
+    },
+    {
+      "metric_id": "pay_user_cnt",
+      "name": "付费用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(pay_user_cnt)",
+        "ads_buy_channel_roi_daily": "SUM(pay_user_cnt)",
+        "ads_material_daily": "SUM(pay_user_cnt)",
+        "dws_v4_user_daily": "SUM(pay_user_cnt)"
+      },
+      "description": "「付费用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、dws_v4_user_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「付费用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「pay_user_cnt」。"
+    },
+    {
+      "metric_id": "pay_order_cnt",
+      "name": "付费订单数",
+      "default_unit": "order",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_material_daily": "SUM(pay_order_cnt)",
+        "dws_v4_user_daily": "SUM(pay_order_cnt)",
+        "dws_v4_cohort_user": "SUM(day_n_pay_order_cnt)",
+        "dws_v4_cohort_device": "SUM(day_n_pay_order_cnt)"
+      },
+      "description": "「付费订单数」指标，默认单位为 order，聚合方式为 sum。单表表达式适用于 ads_material_daily、dws_v4_user_daily、dws_v4_cohort_user、dws_v4_cohort_device。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「付费订单数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「pay_order_cnt」。"
+    },
+    {
+      "metric_id": "first_pay_user_cnt",
+      "name": "首付用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(first_pay_user_cnt)",
+        "ads_buy_channel_roi_daily": "SUM(first_pay_user_cnt)",
+        "dws_v4_user_daily": "SUM(first_pay_user_cnt)"
+      },
+      "description": "「首付用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、dws_v4_user_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「首付用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「first_pay_user_cnt」。"
+    },
+    {
+      "metric_id": "arpu",
+      "name": "ARPU",
+      "default_unit": "yuan_per_user",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(pay_amt_sum) / 100 / NULLIF(SUM(dau), 0)",
+        "dws_v4_user_daily": "SUM(trans_amt) / 100 / NULLIF(SUM(login_user_cnt), 0)"
+      },
+      "description": "「ARPU」指标，默认单位为 yuan_per_user，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、dws_v4_user_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「ARPU」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「arpu」。"
+    },
+    {
+      "metric_id": "arppu",
+      "name": "ARPPU",
+      "default_unit": "yuan_per_payer",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(pay_amt_sum) / 100 / NULLIF(SUM(pay_user_cnt), 0)",
+        "ads_material_daily": "SUM(pay_amt_sum) / 100 / NULLIF(SUM(pay_user_cnt), 0)",
+        "dws_v4_user_daily": "SUM(trans_amt) / 100 / NULLIF(SUM(pay_user_cnt), 0)",
+        "dws_v4_cohort_user": "SUM(day_n_pay_amt) / 100 / NULLIF(SUM(day_n_pay_user_cnt), 0)"
+      },
+      "description": "「ARPPU」指标，默认单位为 yuan_per_payer，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、ads_material_daily、dws_v4_user_daily、dws_v4_cohort_user。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「ARPPU」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「arppu」。"
+    },
+    {
+      "metric_id": "pay_rate",
+      "name": "付费率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(pay_user_cnt) / NULLIF(SUM(dau), 0)",
+        "dws_v4_user_daily": "SUM(pay_user_cnt) / NULLIF(SUM(login_user_cnt), 0)",
+        "ads_material_daily": "SUM(pay_user_cnt) / NULLIF(SUM(game_new_user_cnt), 0)"
+      },
+      "description": "「付费率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、dws_v4_user_daily、ads_material_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「付费率」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「pay_rate」。"
+    },
+    {
+      "metric_id": "platform_new_user_cnt",
+      "name": "平台新用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(platform_new_user_cnt)",
+        "ads_buy_channel_roi_daily": "SUM(platform_new_user_cnt)",
+        "ads_material_daily": "SUM(platform_new_user_cnt)"
+      },
+      "description": "「平台新用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「平台新用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「platform_new_user_cnt」。"
+    },
+    {
+      "metric_id": "game_new_user_cnt",
+      "name": "游戏新用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(game_new_user_cnt)",
+        "ads_buy_channel_roi_daily": "SUM(game_new_user_cnt)",
+        "ads_material_daily": "SUM(game_new_user_cnt)"
+      },
+      "description": "「游戏新用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「游戏新用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「game_new_user_cnt」。"
+    },
+    {
+      "metric_id": "ad_new_user_cnt",
+      "name": "广告来源新用户",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(ad_new_user_cnt)"
+      },
+      "description": "「广告来源新用户」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「广告来源新用户」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ad_new_user_cnt」。"
+    },
+    {
+      "metric_id": "organic_new_user_cnt",
+      "name": "自然来源新用户",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(organic_new_user_cnt)"
+      },
+      "description": "「自然来源新用户」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「自然来源新用户」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「organic_new_user_cnt」。"
+    },
+    {
+      "metric_id": "ad_new_user_share",
+      "name": "广告新增占比",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(ad_new_user_cnt) / NULLIF(SUM(game_new_user_cnt), 0)"
+      },
+      "description": "「广告新增占比」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「广告新增占比」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ad_new_user_share」。"
+    },
+    {
+      "metric_id": "new_role_cnt",
+      "name": "新建角色数",
+      "default_unit": "role",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(new_role_cnt)",
+        "ads_buy_channel_roi_daily": "SUM(new_role_cnt)",
+        "dws_v4_user_daily": "SUM(new_role_cnt)"
+      },
+      "description": "「新建角色数」指标，默认单位为 role，聚合方式为 sum。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、dws_v4_user_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「新建角色数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「new_role_cnt」。"
+    },
+    {
+      "metric_id": "role_create_rate",
+      "name": "创角率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_user_daily": "SUM(new_enter_role_cnt) / NULLIF(SUM(new_enter_user_cnt), 0)"
+      },
+      "description": "「创角率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_user_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「创角率」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「role_create_rate」。"
+    },
+    {
+      "metric_id": "reg_user_cnt",
+      "name": "注册用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "dws_v4_user_daily": "SUM(reg_user_cnt)"
+      },
+      "description": "「注册用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 dws_v4_user_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「注册用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「reg_user_cnt」。"
+    },
+    {
+      "metric_id": "reg_to_first_pay_rate",
+      "name": "注册转首付率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_user_daily": "SUM(first_pay_user_cnt) / NULLIF(SUM(reg_user_cnt), 0)"
+      },
+      "description": "「注册转首付率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_user_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「注册转首付率」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「reg_to_first_pay_rate」。"
+    },
+    {
+      "metric_id": "retention_d1",
+      "name": "D1 留存率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(retain_d1_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_buy_channel_roi_daily": "SUM(retain_d1_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_material_daily": "SUM(retain_d1_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(retain_d1_cnt) / NULLIF(SUM(enter_user_cnt), 0)"
+      },
+      "description": "「D1 留存率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估新增队列或运营口径留存，必须注意分母是新增用户、进入用户或设备队列。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「retention_d1」。"
+    },
+    {
+      "metric_id": "retention_d7",
+      "name": "D7 留存率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_buy_channel_roi_daily": "SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_material_daily": "SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(retain_d7_cnt) / NULLIF(SUM(enter_user_cnt), 0)",
+        "dws_v4_cohort_user": "SUM(retain_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)",
+        "dws_v4_cohort_device": "SUM(retain_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)"
+      },
+      "recommended_filters": {
+        "dws_v4_cohort_user": "day_n = 7",
+        "dws_v4_cohort_device": "day_n = 7"
+      },
+      "description": "「D7 留存率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估新增队列或运营口径留存，必须注意分母是新增用户、进入用户或设备队列。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「retention_d7」。"
+    },
+    {
+      "metric_id": "retention_d30",
+      "name": "D30 留存率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_op_game_overview_daily": "SUM(retain_d30_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_buy_channel_roi_daily": "SUM(retain_d30_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_material_daily": "SUM(retain_d30_cnt) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(retain_d30_cnt) / NULLIF(SUM(enter_user_cnt), 0)",
+        "dws_v4_cohort_user": "SUM(retain_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)",
+        "dws_v4_cohort_device": "SUM(retain_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)"
+      },
+      "recommended_filters": {
+        "dws_v4_cohort_user": "day_n = 30",
+        "dws_v4_cohort_device": "day_n = 30"
+      },
+      "description": "「D30 留存率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估新增队列或运营口径留存，必须注意分母是新增用户、进入用户或设备队列。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「retention_d30」。"
+    },
+    {
+      "metric_id": "ltv_7d_per_user",
+      "name": "D7 人均 LTV",
+      "default_unit": "yuan_per_user",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(ltv_7d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_material_daily": "SUM(ltv_7d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(ltv_7d) / 100 / NULLIF(SUM(enter_user_cnt), 0)"
+      },
+      "description": "「D7 人均 LTV」指标，默认单位为 yuan_per_user，聚合方式为 ratio。单表表达式适用于 ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估新增用户生命周期价值，较新日期可能尚未完成长周期回填。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ltv_7d_per_user」。"
+    },
+    {
+      "metric_id": "ltv_30d_per_user",
+      "name": "D30 人均 LTV",
+      "default_unit": "yuan_per_user",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(ltv_30d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_material_daily": "SUM(ltv_30d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(ltv_30d) / 100 / NULLIF(SUM(enter_user_cnt), 0)",
+        "dws_v4_cohort_user": "SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_user_cnt), 0)",
+        "dws_v4_cohort_device": "SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_device_cnt), 0)"
+      },
+      "recommended_filters": {
+        "dws_v4_cohort_user": "day_n = 30",
+        "dws_v4_cohort_device": "day_n = 30"
+      },
+      "description": "「D30 人均 LTV」指标，默认单位为 yuan_per_user，聚合方式为 ratio。单表表达式适用于 ads_buy_channel_roi_daily、ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估新增用户生命周期价值，较新日期可能尚未完成长周期回填。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ltv_30d_per_user」。"
+    },
+    {
+      "metric_id": "ltv_360d_per_user",
+      "name": "D360 人均 LTV",
+      "default_unit": "yuan_per_user",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_material_daily": "SUM(ltv_360d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(ltv_360d) / 100 / NULLIF(SUM(enter_user_cnt), 0)",
+        "dws_v4_cohort_user": "SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_user_cnt), 0)",
+        "dws_v4_cohort_device": "SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_device_cnt), 0)"
+      },
+      "recommended_filters": {
+        "dws_v4_cohort_user": "day_n = 360",
+        "dws_v4_cohort_device": "day_n = 360"
+      },
+      "description": "「D360 人均 LTV」指标，默认单位为 yuan_per_user，聚合方式为 ratio。单表表达式适用于 ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估新增用户生命周期价值，较新日期可能尚未完成长周期回填。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ltv_360d_per_user」。"
+    },
+    {
+      "metric_id": "spend",
+      "name": "广告消耗",
+      "default_unit": "yuan",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(spend)",
+        "dws_v4_ad_cost_daily": "SUM(cost_amt) / 100"
+      },
+      "description": "「广告消耗」指标，默认单位为 yuan，聚合方式为 sum。单表表达式适用于 ads_buy_channel_roi_daily、dws_v4_ad_cost_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于衡量广告消耗，注意 ADS 买量表的 spend 已是元，DWS 成本表 cost_amt 是分。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「spend」。"
+    },
+    {
+      "metric_id": "roi_d0",
+      "name": "D0 ROI / 当日 ROI",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(pay_amt_sum) / 100 / NULLIF(SUM(spend), 0)"
+      },
+      "expr_by_template": {
+        "cost_to_user_funnel_join": "u.revenue / NULLIF(c.spend, 0)",
+        "material_cost_ltv_join": "m.revenue / NULLIF(c.spend, 0)"
+      },
+      "description": "「D0 ROI / 当日 ROI」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_buy_channel_roi_daily；模板级表达式适用于 cost_to_user_funnel_join、material_cost_ltv_join。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估投放成本回收，金额字段按元口径输出，分单位字段已在表达式中除以 100。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「roi_d0」。"
+    },
+    {
+      "metric_id": "roi_d7",
+      "name": "D7 ROI",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(ltv_7d) / 100 / NULLIF(SUM(spend), 0)"
+      },
+      "description": "「D7 ROI」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_buy_channel_roi_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估投放成本回收，金额字段按元口径输出，分单位字段已在表达式中除以 100。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「roi_d7」。"
+    },
+    {
+      "metric_id": "roi_d30",
+      "name": "D30 ROI",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(ltv_30d) / 100 / NULLIF(SUM(spend), 0)"
+      },
+      "description": "「D30 ROI」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_buy_channel_roi_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于评估投放成本回收，金额字段按元口径输出，分单位字段已在表达式中除以 100。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「roi_d30」。"
+    },
+    {
+      "metric_id": "ctr",
+      "name": "点击率 CTR",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(click_cnt) / NULLIF(SUM(impression_cnt), 0)"
+      },
+      "description": "「点击率 CTR」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_ad_cost_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于衡量曝光到点击效率。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ctr」。"
+    },
+    {
+      "metric_id": "cvr",
+      "name": "转化率 CVR",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(platform_convert_cnt) / NULLIF(SUM(click_cnt), 0)"
+      },
+      "description": "「转化率 CVR」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_ad_cost_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于衡量点击到平台转化效率。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cvr」。"
+    },
+    {
+      "metric_id": "cpm",
+      "name": "CPM",
+      "default_unit": "yuan",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(cost_amt) / 100 / NULLIF(SUM(impression_cnt), 0) * 1000"
+      },
+      "description": "「CPM」指标，默认单位为 yuan，聚合方式为 ratio。单表表达式适用于 dws_v4_ad_cost_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「CPM」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cpm」。"
+    },
+    {
+      "metric_id": "cpc",
+      "name": "CPC",
+      "default_unit": "yuan",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(cost_amt) / 100 / NULLIF(SUM(click_cnt), 0)"
+      },
+      "description": "「CPC」指标，默认单位为 yuan，聚合方式为 ratio。单表表达式适用于 dws_v4_ad_cost_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「CPC」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cpc」。"
+    },
+    {
+      "metric_id": "cpa",
+      "name": "CPA",
+      "default_unit": "yuan",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(cost_amt) / 100 / NULLIF(SUM(platform_convert_cnt), 0)"
+      },
+      "description": "「CPA」指标，默认单位为 yuan，聚合方式为 ratio。单表表达式适用于 dws_v4_ad_cost_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「CPA」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cpa」。"
+    },
+    {
+      "metric_id": "impressions",
+      "name": "曝光数",
+      "default_unit": "count",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(impression_cnt)"
+      },
+      "description": "「曝光数」指标，默认单位为 count，聚合方式为 sum。单表表达式适用于 dws_v4_ad_cost_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「曝光数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「impressions」。"
+    },
+    {
+      "metric_id": "clicks",
+      "name": "点击数",
+      "default_unit": "count",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(click_cnt)"
+      },
+      "description": "「点击数」指标，默认单位为 count，聚合方式为 sum。单表表达式适用于 dws_v4_ad_cost_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「点击数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「clicks」。"
+    },
+    {
+      "metric_id": "platform_conversions",
+      "name": "广告平台转化数",
+      "default_unit": "count",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "dws_v4_ad_cost_daily": "SUM(platform_convert_cnt)"
+      },
+      "description": "「广告平台转化数」指标，默认单位为 count，聚合方式为 sum。单表表达式适用于 dws_v4_ad_cost_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「广告平台转化数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「platform_conversions」。"
+    },
+    {
+      "metric_id": "new_device_cnt",
+      "name": "新设备数",
+      "default_unit": "device",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_buy_channel_roi_daily": "SUM(new_device_cnt)",
+        "dws_v4_device_daily": "SUM(new_device_cnt)"
+      },
+      "description": "「新设备数」指标，默认单位为 device，聚合方式为 sum。单表表达式适用于 ads_buy_channel_roi_daily、dws_v4_device_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「新设备数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「new_device_cnt」。"
+    },
+    {
+      "metric_id": "activate_cnt",
+      "name": "激活次数",
+      "default_unit": "count",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "dws_v4_device_daily": "SUM(activate_cnt)"
+      },
+      "description": "「激活次数」指标，默认单位为 count，聚合方式为 sum。单表表达式适用于 dws_v4_device_daily。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「激活次数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「activate_cnt」。"
+    },
+    {
+      "metric_id": "ad_new_device_share",
+      "name": "广告新设备占比",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_device_daily": "SUM(ad_new_device_cnt) / NULLIF(SUM(new_device_cnt), 0)"
+      },
+      "description": "「广告新设备占比」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_device_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「广告新设备占比」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「ad_new_device_share」。"
+    },
+    {
+      "metric_id": "organic_new_device_share",
+      "name": "自然新设备占比",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_device_daily": "SUM(organic_new_device_cnt) / NULLIF(SUM(new_device_cnt), 0)"
+      },
+      "description": "「自然新设备占比」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_device_daily。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「自然新设备占比」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「organic_new_device_share」。"
+    },
+    {
+      "metric_id": "cohort_enter_user_cnt",
+      "name": "队列进入用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_cohort_pivot": "SUM(enter_user_cnt)",
+        "dws_v4_cohort_user": "SUM(d0_enter_user_cnt)"
+      },
+      "description": "「队列进入用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 ads_cohort_pivot、dws_v4_cohort_user。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「队列进入用户数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cohort_enter_user_cnt」。"
+    },
+    {
+      "metric_id": "cohort_enter_device_cnt",
+      "name": "队列进入设备数",
+      "default_unit": "device",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "ads_cohort_pivot": "SUM(enter_device_cnt)",
+        "dws_v4_cohort_device": "SUM(d0_enter_device_cnt)"
+      },
+      "description": "「队列进入设备数」指标，默认单位为 device，聚合方式为 sum。单表表达式适用于 ads_cohort_pivot、dws_v4_cohort_device。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于回答与「队列进入设备数」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cohort_enter_device_cnt」。"
+    },
+    {
+      "metric_id": "cohort_d0_pay_rate",
+      "name": "D0 付费率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_cohort_user": "SUM(d0_pay_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)",
+        "dws_v4_cohort_device": "SUM(d0_pay_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)"
+      },
+      "description": "「D0 付费率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「D0 付费率」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cohort_d0_pay_rate」。"
+    },
+    {
+      "metric_id": "cum_pay_rate_d30",
+      "name": "D30 累计付费率",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "ads_material_daily": "SUM(cumulative_pay_user_d30) / NULLIF(SUM(game_new_user_cnt), 0)",
+        "ads_cohort_pivot": "SUM(cumulative_pay_user_d30) / NULLIF(SUM(enter_user_cnt), 0)",
+        "dws_v4_cohort_user": "SUM(cum_pay_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)"
+      },
+      "recommended_filters": {
+        "dws_v4_cohort_user": "day_n = 30"
+      },
+      "description": "「D30 累计付费率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 ads_material_daily、ads_cohort_pivot、dws_v4_cohort_user。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「D30 累计付费率」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cum_pay_rate_d30」。"
+    },
+    {
+      "metric_id": "multi_uid_device_risk_avg",
+      "name": "设备多账号风险均值",
+      "default_unit": "uid_per_device",
+      "aggregation": "ratio",
+      "expr_by_table": {
+        "dws_v4_cohort_device": "SUM(uid_cnt_on_device) / NULLIF(SUM(day_n_pay_device_cnt), 0)"
+      },
+      "description": "「设备多账号风险均值」指标，默认单位为 uid_per_device，聚合方式为 ratio。单表表达式适用于 dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于回答与「设备多账号风险均值」相关的排序、趋势、对比和汇总问题。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「multi_uid_device_risk_avg」。"
+    },
+    {
+      "metric_id": "segment_user_cnt",
+      "name": "分群用户数",
+      "default_unit": "user",
+      "aggregation": "sum",
+      "expr_by_table": {
+        "dws_v4_user_segment": "SUM(user_cnt)"
+      },
+      "description": "「分群用户数」指标，默认单位为 user，聚合方式为 sum。单表表达式适用于 dws_v4_user_segment。sum 类指标按表达式聚合后直接输出。",
+      "business_context": "用于衡量用户分群规模或分群占比。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「segment_user_cnt」。"
+    },
+    {
+      "metric_id": "segment_share_of_cohort",
+      "name": "分群占队列比例",
+      "default_unit": "ratio",
+      "aggregation": "ratio",
+      "expr_by_table": {},
+      "expr_by_template": {
+        "segment_share_with_cohort": "s.segment_user_cnt / NULLIF(c.enter_user_cnt, 0)"
+      },
+      "depends_on_metrics": [
+        "segment_user_cnt",
+        "cohort_enter_user_cnt"
+      ],
+      "description": "「分群占队列比例」指标，默认单位为 ratio，聚合方式为 ratio。模板级表达式适用于 segment_share_with_cohort。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+      "business_context": "用于衡量用户分群规模或分群占比。",
+      "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「segment_share_of_cohort」。"
+    }
+  ],
+  "sql_templates": [
+    {
+      "template_name": "op_metric_by_dimension_trend",
+      "name": "运营指标按维度趋势查询",
+      "description": "用于查询运营日报中的 DAU、收入、ARPU、ARPPU、付费率、新增、留存，并按日期、游戏、渠道、业务公司聚合。",
+      "intent": "data_query",
+      "analysis_types": [
+        "trend",
+        "breakdown",
+        "simple_metric"
+      ],
+      "source_tables": [
+        "ads_op_game_overview_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "dau",
+        "dar",
+        "login_cnt",
+        "revenue",
+        "statistical_revenue",
+        "refund_amount",
+        "pay_user_cnt",
+        "first_pay_user_cnt",
+        "arpu",
+        "arppu",
+        "pay_rate",
+        "platform_new_user_cnt",
+        "game_new_user_cnt",
+        "ad_new_user_cnt",
+        "organic_new_user_cnt",
+        "ad_new_user_share",
+        "new_role_cnt",
+        "retention_d1",
+        "retention_d7",
+        "retention_d30"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "business_company",
+        "finalization_status"
+      ],
+      "related_questions": [
+        "最近 7 天每个游戏的 DAU 是多少？",
+        "哪款游戏收入最高？",
+        "各游戏的 ARPU、ARPPU、付费率是多少？",
+        "广告新增和自然新增占比如何？",
+        "哪个渠道 D7 留存最好？"
+      ],
+      "unsupported_cases": [
+        "广告平台/素材/广告层级下钻",
+        "小时级趋势",
+        "广告消耗和 ROI"
+      ],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 90,
+      "business_description": "运营指标按维度趋势查询。用于查询运营日报中的 DAU、收入、ARPU、ARPPU、付费率、新增、留存，并按日期、游戏、渠道、业务公司聚合。 来源表：ads_op_game_overview_daily；分析类型：trend、breakdown、simple_metric；支持 20 个指标和 6 个维度。",
+      "selection_guidance": "当用户问题需要trend、breakdown、simple_metric，且业务范围落在 ads_op_game_overview_daily 时优先选择该模板。典型问题：最近 7 天每个游戏的 DAU 是多少？；哪款游戏收入最高？；各游戏的 ARPU、ARPPU、付费率是多少？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。 不支持：广告平台/素材/广告层级下钻；小时级趋势；广告消耗和 ROI"
+    },
+    {
+      "template_name": "op_top_entity_by_metric",
+      "name": "运营指标 TopN 排名查询",
+      "description": "用于按游戏、渠道或业务公司做收入、DAU、ARPU、付费率、留存等 TopN 排名。",
+      "intent": "data_query",
+      "analysis_types": [
+        "ranking",
+        "topn",
+        "breakdown"
+      ],
+      "source_tables": [
+        "ads_op_game_overview_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time",
+        "dimensions"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "dau",
+        "revenue",
+        "arpu",
+        "arppu",
+        "pay_rate",
+        "game_new_user_cnt",
+        "retention_d7",
+        "retention_d30"
+      ],
+      "supported_dimensions": [
+        "parent_app",
+        "app",
+        "channel",
+        "business_company"
+      ],
+      "related_questions": [
+        "最近 30 天收入最高的游戏 Top10",
+        "哪个渠道 DAU 最高？",
+        "付费率最高的游戏有哪些？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "order_by 默认使用第一个 metric desc；limit 默认 10。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 82,
+      "business_description": "运营指标 TopN 排名查询。用于按游戏、渠道或业务公司做收入、DAU、ARPU、付费率、留存等 TopN 排名。 来源表：ads_op_game_overview_daily；分析类型：ranking、topn、breakdown；支持 8 个指标和 4 个维度。",
+      "selection_guidance": "当用户问题需要ranking、topn、breakdown，且业务范围落在 ads_op_game_overview_daily 时优先选择该模板。典型问题：最近 30 天收入最高的游戏 Top10；哪个渠道 DAU 最高？；付费率最高的游戏有哪些？。",
+      "slot_guidance": "必填槽位：metrics、time、dimensions；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "buy_channel_roi_by_ad_dimension",
+      "name": "买量 ROI 按广告维度分析",
+      "description": "用于分析广告平台、投手账号、广告层级、游戏、渠道的消耗、新增、收入、D0/D7/D30 ROI 与留存。",
+      "intent": "data_query",
+      "analysis_types": [
+        "roi",
+        "ranking",
+        "breakdown",
+        "trend"
+      ],
+      "source_tables": [
+        "ads_buy_channel_roi_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "spend",
+        "platform_new_user_cnt",
+        "game_new_user_cnt",
+        "new_device_cnt",
+        "new_role_cnt",
+        "pay_user_cnt",
+        "first_pay_user_cnt",
+        "revenue",
+        "roi_d0",
+        "roi_d7",
+        "roi_d30",
+        "retention_d7",
+        "retention_d30",
+        "ltv_7d_per_user",
+        "ltv_30d_per_user"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "business_company",
+        "parent_team",
+        "child_team",
+        "buyer_account",
+        "ad_platform",
+        "campaign",
+        "ad_group",
+        "creative"
+      ],
+      "related_questions": [
+        "最近 30 天哪个广告平台 ROI 最高？",
+        "bytedance 在 2026 年 5 月的消耗、收入、ROI 分别是多少？",
+        "哪个投手账号 D7 ROI 最高？",
+        "D30 ROI 低于 1 的投放组合有哪些？"
+      ],
+      "unsupported_cases": [
+        "素材类型/广告版位分析优先使用 ads_material_daily",
+        "曝光点击 CTR/CVR 优先使用 dws_v4_ad_cost_daily"
+      ],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 88,
+      "business_description": "买量 ROI 按广告维度分析。用于分析广告平台、投手账号、广告层级、游戏、渠道的消耗、新增、收入、D0/D7/D30 ROI 与留存。 来源表：ads_buy_channel_roi_daily；分析类型：roi、ranking、breakdown、trend；支持 15 个指标和 12 个维度。",
+      "selection_guidance": "当用户问题需要roi、ranking、breakdown、trend，且业务范围落在 ads_buy_channel_roi_daily 时优先选择该模板。典型问题：最近 30 天哪个广告平台 ROI 最高？；bytedance 在 2026 年 5 月的消耗、收入、ROI 分别是多少？；哪个投手账号 D7 ROI 最高？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。 不支持：素材类型/广告版位分析优先使用 ads_material_daily；曝光点击 CTR/CVR 优先使用 dws_v4_ad_cost_daily"
+    },
+    {
+      "template_name": "ad_cost_quality_by_dimension",
+      "name": "广告消耗与点击转化质量查询",
+      "description": "用于查询广告消耗、曝光、点击、转化、CTR、CVR、CPM、CPC、CPA，并按广告平台、账号、层级、素材聚合。",
+      "intent": "data_query",
+      "analysis_types": [
+        "cost",
+        "funnel",
+        "quality",
+        "ranking",
+        "trend"
+      ],
+      "source_tables": [
+        "dws_v4_ad_cost_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "spend",
+        "impressions",
+        "clicks",
+        "platform_conversions",
+        "ctr",
+        "cvr",
+        "cpm",
+        "cpc",
+        "cpa"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "md_traceid",
+        "ad_platform",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position",
+        "currency",
+        "finalization_status"
+      ],
+      "related_questions": [
+        "最近 30 天哪个广告平台消耗最多？",
+        "哪个广告账号 CTR 最高？",
+        "哪个广告层级 CPA 最低？",
+        "哪些广告还没有最终结算？",
+        "某个素材的点击率和转化率是多少？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 84,
+      "business_description": "广告消耗与点击转化质量查询。用于查询广告消耗、曝光、点击、转化、CTR、CVR、CPM、CPC、CPA，并按广告平台、账号、层级、素材聚合。 来源表：dws_v4_ad_cost_daily；分析类型：cost、funnel、quality、ranking、trend；支持 9 个指标和 15 个维度。",
+      "selection_guidance": "当用户问题需要cost、funnel、quality、ranking、trend，且业务范围落在 dws_v4_ad_cost_daily 时优先选择该模板。典型问题：最近 30 天哪个广告平台消耗最多？；哪个广告账号 CTR 最高？；哪个广告层级 CPA 最低？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "material_effect_rank",
+      "name": "素材效果排名查询",
+      "description": "用于比较素材、素材类型、广告版位在新增、收入、LTV、留存、累计付费率上的表现。",
+      "intent": "data_query",
+      "analysis_types": [
+        "material",
+        "ranking",
+        "breakdown",
+        "trend"
+      ],
+      "source_tables": [
+        "ads_material_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "platform_new_user_cnt",
+        "game_new_user_cnt",
+        "pay_user_cnt",
+        "pay_order_cnt",
+        "revenue",
+        "statistical_revenue",
+        "arppu",
+        "pay_rate",
+        "retention_d1",
+        "retention_d7",
+        "retention_d30",
+        "ltv_7d_per_user",
+        "ltv_30d_per_user",
+        "ltv_360d_per_user",
+        "cum_pay_rate_d30"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "business_company",
+        "ad_platform",
+        "ad_channel",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "material_type",
+        "ad_position",
+        "ad_link"
+      ],
+      "related_questions": [
+        "哪个素材 D30 LTV 最高？",
+        "视频素材和图片素材哪个 D7 留存更好？",
+        "哪个广告版位的付费率最高？",
+        "最近 7 天哪个素材新增最多但 LTV 较低？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 86,
+      "business_description": "素材效果排名查询。用于比较素材、素材类型、广告版位在新增、收入、LTV、留存、累计付费率上的表现。 来源表：ads_material_daily；分析类型：material、ranking、breakdown、trend；支持 15 个指标和 14 个维度。",
+      "selection_guidance": "当用户问题需要material、ranking、breakdown、trend，且业务范围落在 ads_material_daily 时优先选择该模板。典型问题：哪个素材 D30 LTV 最高？；视频素材和图片素材哪个 D7 留存更好？；哪个广告版位的付费率最高？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "cohort_pivot_lifecycle_wide",
+      "name": "同期群宽表生命周期查询",
+      "description": "用于直接查询 D1/D3/D7/D30/D90/D360 留存、LTV、累计付费率，适合业务侧生命周期问题。",
+      "intent": "data_query",
+      "analysis_types": [
+        "cohort",
+        "lifecycle",
+        "retention",
+        "ltv",
+        "trend",
+        "breakdown"
+      ],
+      "source_tables": [
+        "ads_cohort_pivot"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "cohort_enter_user_cnt",
+        "cohort_enter_device_cnt",
+        "retention_d1",
+        "retention_d7",
+        "retention_d30",
+        "ltv_7d_per_user",
+        "ltv_30d_per_user",
+        "ltv_360d_per_user",
+        "cum_pay_rate_d30"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "business_company",
+        "is_platform_new_user",
+        "ad_platform",
+        "ad_channel",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "material_type",
+        "ad_position",
+        "ad_link",
+        "finalization_status"
+      ],
+      "related_questions": [
+        "哪个广告平台 D30 留存率最高？",
+        "最近三个月各游戏 D7、D30、D90 留存趋势如何？",
+        "哪个素材 D360 LTV 最好？",
+        "平台新用户和老用户试新游的 LTV 差异是多少？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "如果查询 D90/D360，请建议限制 enter_date 到足够早的日期，避免未回填导致低估。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 87,
+      "business_description": "同期群宽表生命周期查询。用于直接查询 D1/D3/D7/D30/D90/D360 留存、LTV、累计付费率，适合业务侧生命周期问题。 来源表：ads_cohort_pivot；分析类型：cohort、lifecycle、retention、ltv、trend、breakdown；支持 9 个指标和 16 个维度。",
+      "selection_guidance": "当用户问题需要cohort、lifecycle、retention、ltv、trend、breakdown，且业务范围落在 ads_cohort_pivot 时优先选择该模板。典型问题：哪个广告平台 D30 留存率最高？；最近三个月各游戏 D7、D30、D90 留存趋势如何？；哪个素材 D360 LTV 最好？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "dws_user_hourly_flow_trend",
+      "name": "用户小时级流量趋势查询",
+      "description": "用于查询小时级登录、新增进入、注册、创角、付费、收入、首付转化、创角率等指标。",
+      "intent": "data_query",
+      "analysis_types": [
+        "hourly",
+        "trend",
+        "funnel",
+        "simple_metric"
+      ],
+      "source_tables": [
+        "dws_v4_user_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "dau",
+        "revenue",
+        "pay_user_cnt",
+        "pay_order_cnt",
+        "arpu",
+        "arppu",
+        "pay_rate",
+        "reg_user_cnt",
+        "new_role_cnt",
+        "first_pay_user_cnt",
+        "reg_to_first_pay_rate",
+        "role_create_rate"
+      ],
+      "supported_dimensions": [
+        "date",
+        "hour",
+        "parent_app",
+        "app",
+        "channel",
+        "app_type",
+        "md_traceid",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position",
+        "finalization_status"
+      ],
+      "related_questions": [
+        "今天每小时 DAU 和收入趋势如何？",
+        "最近 7 天 ARPU 变化如何？",
+        "哪个广告素材带来的注册转首付率最好？",
+        "哪个时间段创角率最低？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 80,
+      "business_description": "用户小时级流量趋势查询。用于查询小时级登录、新增进入、注册、创角、付费、收入、首付转化、创角率等指标。 来源表：dws_v4_user_daily；分析类型：hourly、trend、funnel、simple_metric；支持 12 个指标和 15 个维度。",
+      "selection_guidance": "当用户问题需要hourly、trend、funnel、simple_metric，且业务范围落在 dws_v4_user_daily 时优先选择该模板。典型问题：今天每小时 DAU 和收入趋势如何？；最近 7 天 ARPU 变化如何？；哪个广告素材带来的注册转首付率最好？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "dws_device_hourly_flow_trend",
+      "name": "设备小时级流量趋势查询",
+      "description": "用于查询小时级激活、新设备、广告新设备、自然新设备及对应占比。",
+      "intent": "data_query",
+      "analysis_types": [
+        "hourly",
+        "device",
+        "trend",
+        "breakdown"
+      ],
+      "source_tables": [
+        "dws_v4_device_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "activate_cnt",
+        "new_device_cnt",
+        "ad_new_device_share",
+        "organic_new_device_share"
+      ],
+      "supported_dimensions": [
+        "date",
+        "hour",
+        "parent_app",
+        "app",
+        "channel",
+        "app_type",
+        "md_traceid",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position",
+        "finalization_status"
+      ],
+      "related_questions": [
+        "今天每小时新增设备走势如何？",
+        "哪个广告平台带来的新设备最多？",
+        "最近 7 天自然新增设备占比是多少？",
+        "某个游戏设备激活峰值在几点？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 78,
+      "business_description": "设备小时级流量趋势查询。用于查询小时级激活、新设备、广告新设备、自然新设备及对应占比。 来源表：dws_v4_device_daily；分析类型：hourly、device、trend、breakdown；支持 4 个指标和 15 个维度。",
+      "selection_guidance": "当用户问题需要hourly、device、trend、breakdown，且业务范围落在 dws_v4_device_daily 时优先选择该模板。典型问题：今天每小时新增设备走势如何？；哪个广告平台带来的新设备最多？；最近 7 天自然新增设备占比是多少？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "cohort_user_dayn_analysis",
+      "name": "用户队列 day_n 生命周期明细查询",
+      "description": "用于在 dws_v4_cohort_user 中按 day_n 查询用户留存、付费留存、每日付费、累计 LTV、累计付费率。",
+      "intent": "data_query",
+      "analysis_types": [
+        "cohort",
+        "day_n",
+        "lifecycle",
+        "retention",
+        "ltv"
+      ],
+      "source_tables": [
+        "dws_v4_cohort_user"
+      ],
+      "required_slots": [
+        "metrics",
+        "time",
+        "day_n"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "cohort_enter_user_cnt",
+        "cohort_d0_pay_rate",
+        "retention_d7",
+        "retention_d30",
+        "ltv_30d_per_user",
+        "ltv_360d_per_user",
+        "arppu",
+        "pay_order_cnt",
+        "cum_pay_rate_d30"
+      ],
+      "supported_dimensions": [
+        "date",
+        "hour",
+        "parent_app",
+        "app",
+        "channel",
+        "app_type",
+        "md_traceid",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position",
+        "day_n"
+      ],
+      "related_questions": [
+        "某个游戏 D7、D30、D90 留存率是多少？",
+        "哪个广告素材带来的用户首日付费率最高？",
+        "某个队列从 D0 到 D30 的累计收入增长如何？",
+        "D0 付费用户的 D7 留存表现如何？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "day_n 是必需过滤或分组字段；若 metric_id 是 retention_d7/retention_d30，则自动补 day_n=7/30。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 76,
+      "business_description": "用户队列 day_n 生命周期明细查询。用于在 dws_v4_cohort_user 中按 day_n 查询用户留存、付费留存、每日付费、累计 LTV、累计付费率。 来源表：dws_v4_cohort_user；分析类型：cohort、day_n、lifecycle、retention、ltv；支持 9 个指标和 15 个维度。",
+      "selection_guidance": "当用户问题需要cohort、day_n、lifecycle、retention、ltv，且业务范围落在 dws_v4_cohort_user 时优先选择该模板。典型问题：某个游戏 D7、D30、D90 留存率是多少？；哪个广告素材带来的用户首日付费率最高？；某个队列从 D0 到 D30 的累计收入增长如何？。",
+      "slot_guidance": "必填槽位：metrics、time、day_n；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "cohort_device_dayn_risk_analysis",
+      "name": "设备队列 day_n 生命周期与风险查询",
+      "description": "用于在 dws_v4_cohort_device 中按 day_n 查询设备留存、设备 LTV、D0 设备付费率、多账号设备风险。",
+      "intent": "data_query",
+      "analysis_types": [
+        "cohort",
+        "device",
+        "day_n",
+        "risk",
+        "ltv",
+        "retention"
+      ],
+      "source_tables": [
+        "dws_v4_cohort_device"
+      ],
+      "required_slots": [
+        "metrics",
+        "time",
+        "day_n"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "cohort_enter_device_cnt",
+        "cohort_d0_pay_rate",
+        "retention_d7",
+        "retention_d30",
+        "ltv_30d_per_user",
+        "ltv_360d_per_user",
+        "multi_uid_device_risk_avg"
+      ],
+      "supported_dimensions": [
+        "date",
+        "hour",
+        "parent_app",
+        "app",
+        "channel",
+        "app_type",
+        "md_traceid",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position",
+        "day_n"
+      ],
+      "related_questions": [
+        "设备视角 D7 留存率是多少？",
+        "哪个素材的设备付费率最好？",
+        "哪些广告维度存在多账号设备风险？",
+        "用户视角和设备视角的留存差异是多少？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 74,
+      "business_description": "设备队列 day_n 生命周期与风险查询。用于在 dws_v4_cohort_device 中按 day_n 查询设备留存、设备 LTV、D0 设备付费率、多账号设备风险。 来源表：dws_v4_cohort_device；分析类型：cohort、device、day_n、risk、ltv、retention；支持 7 个指标和 15 个维度。",
+      "selection_guidance": "当用户问题需要cohort、device、day_n、risk、ltv、retention，且业务范围落在 dws_v4_cohort_device 时优先选择该模板。典型问题：设备视角 D7 留存率是多少？；哪个素材的设备付费率最好？；哪些广告维度存在多账号设备风险？。",
+      "slot_guidance": "必填槽位：metrics、time、day_n；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "segment_size_trend",
+      "name": "用户分群规模趋势查询",
+      "description": "用于查询 high_value_user、retained_d7、organic_user、risk_multi_uid_device 等分群在日期、游戏、渠道上的规模趋势。",
+      "intent": "data_query",
+      "analysis_types": [
+        "segment",
+        "trend",
+        "breakdown",
+        "simple_metric"
+      ],
+      "source_tables": [
+        "dws_v4_user_segment"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "segment_user_cnt"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "segment_key"
+      ],
+      "related_questions": [
+        "最近 30 天高价值用户有多少？",
+        "哪个游戏的 D7 留存用户最多？",
+        "多账号风险用户集中在哪些游戏？",
+        "某个分群在不同日期的变化趋势如何？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "select_dimension_exprs",
+        "select_metric_exprs",
+        "source_table",
+        "time_field",
+        "time_range",
+        "where_filters",
+        "group_by_fields",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{select_dimension_exprs}}",
+        "  {{select_metric_exprs}}",
+        "FROM {{source_table}}",
+        "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "{{group_by_clause}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 72,
+      "business_description": "用户分群规模趋势查询。用于查询 high_value_user、retained_d7、organic_user、risk_multi_uid_device 等分群在日期、游戏、渠道上的规模趋势。 来源表：dws_v4_user_segment；分析类型：segment、trend、breakdown、simple_metric；支持 1 个指标和 5 个维度。",
+      "selection_guidance": "当用户问题需要segment、trend、breakdown、simple_metric，且业务范围落在 dws_v4_user_segment 时优先选择该模板。典型问题：最近 30 天高价值用户有多少？；哪个游戏的 D7 留存用户最多？；多账号风险用户集中在哪些游戏？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "user_device_flow_compare",
+      "name": "用户与设备口径对比查询",
+      "description": "用于按日期、小时、游戏、渠道对比用户新增/登录与设备新增/激活，判断用户和设备口径是否匹配。",
+      "intent": "data_query",
+      "analysis_types": [
+        "compare",
+        "hourly",
+        "join",
+        "diagnostic"
+      ],
+      "source_tables": [
+        "dws_v4_user_daily",
+        "dws_v4_device_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "dau",
+        "revenue",
+        "reg_user_cnt",
+        "activate_cnt",
+        "new_device_cnt",
+        "ad_new_device_share",
+        "organic_new_device_share"
+      ],
+      "supported_dimensions": [
+        "date",
+        "hour",
+        "parent_app",
+        "app",
+        "channel",
+        "app_type",
+        "md_traceid",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position"
+      ],
+      "related_questions": [
+        "设备新增和用户新增是否匹配？",
+        "某游戏今天每小时用户和设备趋势对比",
+        "哪个广告素材用户/设备新增比例异常？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "user_group_fields",
+        "device_group_fields",
+        "start_date",
+        "end_date",
+        "user_where_filters",
+        "device_where_filters",
+        "join_conditions",
+        "select_join_dimensions",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "WITH u AS (",
+        "  SELECT {{user_group_fields}}",
+        "         SUM(login_user_cnt) AS dau,",
+        "         SUM(new_enter_user_cnt) AS new_enter_user_cnt,",
+        "         SUM(reg_user_cnt) AS reg_user_cnt,",
+        "         SUM(trans_amt) / 100 AS revenue",
+        "  FROM dws_v4_user_daily",
+        "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{user_where_filters}}",
+        "  GROUP BY {{user_group_by_fields}}",
+        "), d AS (",
+        "  SELECT {{device_group_fields}}",
+        "         SUM(activate_cnt) AS activate_cnt,",
+        "         SUM(new_device_cnt) AS new_device_cnt,",
+        "         SUM(ad_new_device_cnt) AS ad_new_device_cnt,",
+        "         SUM(organic_new_device_cnt) AS organic_new_device_cnt",
+        "  FROM dws_v4_device_daily",
+        "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{device_where_filters}}",
+        "  GROUP BY {{device_group_by_fields}}",
+        ")",
+        "SELECT {{select_join_dimensions}},",
+        "       u.dau, u.new_enter_user_cnt, u.reg_user_cnt, u.revenue,",
+        "       d.activate_cnt, d.new_device_cnt, d.ad_new_device_cnt, d.organic_new_device_cnt,",
+        "       u.new_enter_user_cnt / NULLIF(d.new_device_cnt, 0) AS user_device_new_ratio",
+        "FROM u",
+        "JOIN d ON {{join_conditions}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "join_conditions 默认按 stat_date/stat_hour/papp_id/app_id/cch_id 以及用户选择的共同广告维度连接。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 70,
+      "business_description": "用户与设备口径对比查询。用于按日期、小时、游戏、渠道对比用户新增/登录与设备新增/激活，判断用户和设备口径是否匹配。 来源表：dws_v4_user_daily、dws_v4_device_daily；分析类型：compare、hourly、join、diagnostic；支持 7 个指标和 14 个维度。",
+      "selection_guidance": "当用户问题需要compare、hourly、join、diagnostic，且业务范围落在 dws_v4_user_daily、dws_v4_device_daily 时优先选择该模板。典型问题：设备新增和用户新增是否匹配？；某游戏今天每小时用户和设备趋势对比；哪个广告素材用户/设备新增比例异常？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "cost_to_user_funnel_join",
+      "name": "广告成本到用户注册付费漏斗查询",
+      "description": "用于将 dws_v4_ad_cost_daily 与 dws_v4_user_daily 关联，分析消耗、曝光、点击、转化到注册、首付、收入、成本回收。",
+      "intent": "data_query",
+      "analysis_types": [
+        "join",
+        "funnel",
+        "cost",
+        "roi",
+        "complex"
+      ],
+      "source_tables": [
+        "dws_v4_ad_cost_daily",
+        "dws_v4_user_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "spend",
+        "impressions",
+        "clicks",
+        "platform_conversions",
+        "ctr",
+        "cvr",
+        "reg_user_cnt",
+        "first_pay_user_cnt",
+        "pay_user_cnt",
+        "revenue",
+        "roi_d0"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "md_traceid",
+        "ad_channel",
+        "ad_account",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "ad_position"
+      ],
+      "related_questions": [
+        "某广告账号从消耗到注册、付费的漏斗如何？",
+        "哪个素材首付成本最低？",
+        "哪个广告层级 D0 ROI 最高？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "cost_group_fields",
+        "user_group_fields",
+        "start_date",
+        "end_date",
+        "cost_where_filters",
+        "user_where_filters",
+        "join_conditions",
+        "select_join_dimensions",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "WITH c AS (",
+        "  SELECT {{cost_group_fields}},",
+        "         SUM(cost_amt) / 100 AS spend,",
+        "         SUM(impression_cnt) AS impressions,",
+        "         SUM(click_cnt) AS clicks,",
+        "         SUM(platform_convert_cnt) AS platform_conversions",
+        "  FROM dws_v4_ad_cost_daily",
+        "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{cost_where_filters}}",
+        "  GROUP BY {{cost_group_by_fields}}",
+        "), u AS (",
+        "  SELECT {{user_group_fields}},",
+        "         SUM(new_enter_user_cnt) AS new_enter_user_cnt,",
+        "         SUM(reg_user_cnt) AS reg_user_cnt,",
+        "         SUM(first_pay_user_cnt) AS first_pay_user_cnt,",
+        "         SUM(pay_user_cnt) AS pay_user_cnt,",
+        "         SUM(trans_amt) / 100 AS revenue",
+        "  FROM dws_v4_user_daily",
+        "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{user_where_filters}}",
+        "  GROUP BY {{user_group_by_fields}}",
+        ")",
+        "SELECT {{select_join_dimensions}},",
+        "       c.spend, c.impressions, c.clicks, c.platform_conversions,",
+        "       u.new_enter_user_cnt, u.reg_user_cnt, u.first_pay_user_cnt, u.pay_user_cnt, u.revenue,",
+        "       c.clicks / NULLIF(c.impressions, 0) AS ctr,",
+        "       c.platform_conversions / NULLIF(c.clicks, 0) AS cvr,",
+        "       c.spend / NULLIF(u.reg_user_cnt, 0) AS cost_per_reg_user,",
+        "       c.spend / NULLIF(u.first_pay_user_cnt, 0) AS cost_per_first_payer,",
+        "       u.revenue / NULLIF(c.spend, 0) AS roi_d0",
+        "FROM c",
+        "JOIN u ON {{join_conditions}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "dws_v4_ad_cost_daily 与 dws_v4_user_daily 推荐按 stat_date、papp_id、app_id、cch_id、md_traceid、ad_cch_id、ad_account_id、tg_level_1/2/3、ad_material_id、ad_position 等共同维度连接。",
+        "roi_d0 是跨表派生指标，模板输出别名固定为 roi_d0，对应 metric_definitions.roi_d0.expr_by_template.cost_to_user_funnel_join。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 68,
+      "business_description": "广告成本到用户注册付费漏斗查询。用于将 dws_v4_ad_cost_daily 与 dws_v4_user_daily 关联，分析消耗、曝光、点击、转化到注册、首付、收入、成本回收。 来源表：dws_v4_ad_cost_daily、dws_v4_user_daily；分析类型：join、funnel、cost、roi、complex；支持 11 个指标和 12 个维度。",
+      "selection_guidance": "当用户问题需要join、funnel、cost、roi、complex，且业务范围落在 dws_v4_ad_cost_daily、dws_v4_user_daily 时优先选择该模板。典型问题：某广告账号从消耗到注册、付费的漏斗如何？；哪个素材首付成本最低？；哪个广告层级 D0 ROI 最高？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "material_cost_ltv_join",
+      "name": "素材成本与 LTV 联合分析",
+      "description": "用于将 dws_v4_ad_cost_daily 的消耗点击与 ads_material_daily 的素材新增、收入、LTV、留存联合，评估素材投放质量。",
+      "intent": "data_query",
+      "analysis_types": [
+        "join",
+        "material",
+        "cost",
+        "ltv",
+        "roi",
+        "complex"
+      ],
+      "source_tables": [
+        "dws_v4_ad_cost_daily",
+        "ads_material_daily"
+      ],
+      "required_slots": [
+        "metrics",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "spend",
+        "impressions",
+        "clicks",
+        "platform_conversions",
+        "game_new_user_cnt",
+        "pay_user_cnt",
+        "revenue",
+        "roi_d0",
+        "ltv_7d_per_user",
+        "ltv_30d_per_user",
+        "retention_d7",
+        "cum_pay_rate_d30"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "ad_platform",
+        "ad_channel",
+        "campaign",
+        "ad_group",
+        "creative",
+        "material",
+        "material_type",
+        "ad_position",
+        "ad_link"
+      ],
+      "related_questions": [
+        "哪些素材适合继续加预算？",
+        "最近 7 天新增多但 LTV 低的素材有哪些？",
+        "素材消耗和 D30 LTV 是否匹配？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "cost_group_fields",
+        "material_group_fields",
+        "start_date",
+        "end_date",
+        "cost_where_filters",
+        "material_where_filters",
+        "join_conditions",
+        "select_join_dimensions",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "WITH c AS (",
+        "  SELECT {{cost_group_fields}},",
+        "         SUM(cost_amt) / 100 AS spend,",
+        "         SUM(impression_cnt) AS impressions,",
+        "         SUM(click_cnt) AS clicks,",
+        "         SUM(platform_convert_cnt) AS platform_conversions",
+        "  FROM dws_v4_ad_cost_daily",
+        "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{cost_where_filters}}",
+        "  GROUP BY {{cost_group_by_fields}}",
+        "), m AS (",
+        "  SELECT {{material_group_fields}},",
+        "         SUM(game_new_user_cnt) AS game_new_user_cnt,",
+        "         SUM(pay_user_cnt) AS pay_user_cnt,",
+        "         SUM(pay_amt_sum) / 100 AS revenue,",
+        "         SUM(ltv_7d) / 100 / NULLIF(SUM(game_new_user_cnt), 0) AS ltv_7d_per_user,",
+        "         SUM(ltv_30d) / 100 / NULLIF(SUM(game_new_user_cnt), 0) AS ltv_30d_per_user,",
+        "         SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0) AS retention_d7,",
+        "         SUM(cumulative_pay_user_d30) / NULLIF(SUM(game_new_user_cnt), 0) AS cum_pay_rate_d30",
+        "  FROM ads_material_daily",
+        "  WHERE stat_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{material_where_filters}}",
+        "  GROUP BY {{material_group_by_fields}}",
+        ")",
+        "SELECT {{select_join_dimensions}},",
+        "       c.spend, c.impressions, c.clicks, c.platform_conversions,",
+        "       m.game_new_user_cnt, m.pay_user_cnt, m.revenue,",
+        "       m.ltv_7d_per_user, m.ltv_30d_per_user, m.retention_d7, m.cum_pay_rate_d30,",
+        "       m.revenue / NULLIF(c.spend, 0) AS roi_d0,",
+        "       (m.ltv_30d_per_user * m.game_new_user_cnt) / NULLIF(c.spend, 0) AS d30_roi_estimated",
+        "FROM c",
+        "JOIN m ON {{join_conditions}}",
+        "{{having_clause}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "成本表没有 material_type/ad_link_id 时，不能把这些字段作为 join key；它们只能来自 ads_material_daily。",
+        "roi_d0 是跨表派生指标，模板输出别名固定为 roi_d0，对应 metric_definitions.roi_d0.expr_by_template.material_cost_ltv_join。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 66,
+      "business_description": "素材成本与 LTV 联合分析。用于将 dws_v4_ad_cost_daily 的消耗点击与 ads_material_daily 的素材新增、收入、LTV、留存联合，评估素材投放质量。 来源表：dws_v4_ad_cost_daily、ads_material_daily；分析类型：join、material、cost、ltv、roi、complex；支持 12 个指标和 13 个维度。",
+      "selection_guidance": "当用户问题需要join、material、cost、ltv、roi、complex，且业务范围落在 dws_v4_ad_cost_daily、ads_material_daily 时优先选择该模板。典型问题：哪些素材适合继续加预算？；最近 7 天新增多但 LTV 低的素材有哪些？；素材消耗和 D30 LTV 是否匹配？。",
+      "slot_guidance": "必填槽位：metrics、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "segment_share_with_cohort",
+      "name": "分群占队列比例查询",
+      "description": "用于把 dws_v4_user_segment 与 ads_cohort_pivot 关联，计算某类分群用户占进入队列的比例。",
+      "intent": "data_query",
+      "analysis_types": [
+        "segment",
+        "share",
+        "join",
+        "complex"
+      ],
+      "source_tables": [
+        "dws_v4_user_segment",
+        "ads_cohort_pivot"
+      ],
+      "required_slots": [
+        "segment_key",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [
+        "segment_user_cnt",
+        "segment_share_of_cohort",
+        "cohort_enter_user_cnt"
+      ],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "segment_key"
+      ],
+      "related_questions": [
+        "自然量用户占比是多少？",
+        "高价值用户占新增用户比例是多少？",
+        "多账号风险用户在各游戏新增中占比多少？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "segment_group_fields",
+        "cohort_group_fields",
+        "start_date",
+        "end_date",
+        "segment_where_filters",
+        "cohort_where_filters",
+        "join_conditions",
+        "select_join_dimensions",
+        "order_by",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "WITH s AS (",
+        "  SELECT {{segment_group_fields}},",
+        "         SUM(user_cnt) AS segment_user_cnt",
+        "  FROM dws_v4_user_segment",
+        "  WHERE enter_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{segment_where_filters}}",
+        "  GROUP BY {{segment_group_by_fields}}",
+        "), c AS (",
+        "  SELECT {{cohort_group_fields}},",
+        "         SUM(enter_user_cnt) AS enter_user_cnt",
+        "  FROM ads_cohort_pivot",
+        "  WHERE enter_date BETWEEN {{start_date}} AND {{end_date}}",
+        "    {{cohort_where_filters}}",
+        "  GROUP BY {{cohort_group_by_fields}}",
+        ")",
+        "SELECT {{select_join_dimensions}},",
+        "       s.segment_user_cnt,",
+        "       c.enter_user_cnt,",
+        "       s.segment_user_cnt / NULLIF(c.enter_user_cnt, 0) AS segment_share_of_cohort",
+        "FROM s",
+        "JOIN c ON {{join_conditions}}",
+        "{{order_by_clause}}",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "默认 join key: enter_date, papp_id, app_id, cch_id。",
+        "segment_share_of_cohort 是跨表派生指标，模板输出别名固定为 segment_share_of_cohort，对应 metric_definitions.segment_share_of_cohort.expr_by_template.segment_share_with_cohort。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 64,
+      "business_description": "分群占队列比例查询。用于把 dws_v4_user_segment 与 ads_cohort_pivot 关联，计算某类分群用户占进入队列的比例。 来源表：dws_v4_user_segment、ads_cohort_pivot；分析类型：segment、share、join、complex；支持 3 个指标和 5 个维度。",
+      "selection_guidance": "当用户问题需要segment、share、join、complex，且业务范围落在 dws_v4_user_segment、ads_cohort_pivot 时优先选择该模板。典型问题：自然量用户占比是多少？；高价值用户占新增用户比例是多少？；多账号风险用户在各游戏新增中占比多少？。",
+      "slot_guidance": "必填槽位：segment_key、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    },
+    {
+      "template_name": "data_freshness_backfill_check",
+      "name": "数据回填与最终状态检查",
+      "description": "用于检查 ADS/DWS 表是否完成回填、是否为最终状态，以及生命周期指标是否已填充到指定天数。",
+      "intent": "data_query",
+      "analysis_types": [
+        "data_quality",
+        "freshness",
+        "backfill"
+      ],
+      "source_tables": [
+        "ads_op_game_overview_daily",
+        "ads_buy_channel_roi_daily",
+        "ads_cohort_pivot",
+        "dws_v4_ad_cost_daily",
+        "dws_v4_user_daily",
+        "dws_v4_device_daily"
+      ],
+      "required_slots": [
+        "source_table",
+        "time"
+      ],
+      "optional_slots": [
+        "dimensions",
+        "filters",
+        "having",
+        "order_by",
+        "limit"
+      ],
+      "supported_metrics": [],
+      "supported_dimensions": [
+        "date",
+        "parent_app",
+        "app",
+        "channel",
+        "business_company",
+        "ad_platform",
+        "material",
+        "finalization_status"
+      ],
+      "related_questions": [
+        "最近几天 D30 指标是否已经回填？",
+        "哪些广告消耗还没有最终结算？",
+        "运营日报哪些日期还不是最终状态？"
+      ],
+      "unsupported_cases": [],
+      "sql_params": [
+        "source_table",
+        "date_field",
+        "final_status_field",
+        "update_ts_field",
+        "group_fields",
+        "group_by_fields",
+        "optional_backfill_exprs",
+        "start_date",
+        "end_date",
+        "where_filters",
+        "having",
+        "limit"
+      ],
+      "template_sql_lines": [
+        "SELECT",
+        "  {{date_field}} AS stat_or_enter_date,",
+        "  {{group_fields}}",
+        "  COUNT(*) AS row_cnt,",
+        "  MIN({{final_status_field}}) AS min_final_status,",
+        "  MAX({{final_status_field}}) AS max_final_status,",
+        "  {{optional_backfill_exprs}}",
+        "  MAX({{update_ts_field}}) AS last_update_ts",
+        "FROM {{source_table}}",
+        "WHERE {{date_field}} BETWEEN {{start_date}} AND {{end_date}}",
+        "  {{where_filters}}",
+        "GROUP BY {{date_field}}, {{group_by_fields}}",
+        "{{having_clause}}",
+        "ORDER BY {{date_field}} DESC",
+        "{{limit_clause}}"
+      ],
+      "compiler_notes": [
+        "ads_buy_channel_roi_daily 可用 max_ltv_day_filled；ads_cohort_pivot 可用 max_day_filled；ads_op_game_overview_daily 可用 max_retain_day_filled。",
+        "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+      ],
+      "priority": 55,
+      "business_description": "数据回填与最终状态检查。用于检查 ADS/DWS 表是否完成回填、是否为最终状态，以及生命周期指标是否已填充到指定天数。 来源表：ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily；分析类型：data_quality、freshness、backfill；支持 0 个指标和 8 个维度。",
+      "selection_guidance": "当用户问题需要data_quality、freshness、backfill，且业务范围落在 ads_op_game_overview_daily、ads_buy_channel_roi_daily、ads_cohort_pivot、dws_v4_ad_cost_daily、dws_v4_user_daily、dws_v4_device_daily 时优先选择该模板。典型问题：最近几天 D30 指标是否已经回填？；哪些广告消耗还没有最终结算？；运营日报哪些日期还不是最终状态？。",
+      "slot_guidance": "必填槽位：source_table、time；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+      "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+      "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+    }
+  ]
+}

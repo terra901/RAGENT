@@ -1,0 +1,12 @@
+{
+  "metric_id": "clicks",
+  "name": "点击数",
+  "default_unit": "count",
+  "aggregation": "sum",
+  "expr_by_table": {
+    "dws_v4_ad_cost_daily": "SUM(click_cnt)"
+  },
+  "description": "「点击数」指标，默认单位为 count，聚合方式为 sum。单表表达式适用于 dws_v4_ad_cost_daily。sum 类指标按表达式聚合后直接输出。",
+  "business_context": "用于回答与「点击数」相关的排序、趋势、对比和汇总问题。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「clicks」。"
+}

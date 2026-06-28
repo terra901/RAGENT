@@ -1,0 +1,1325 @@
+# RAGENT MySQL Schema Report
+
+本文件说明 `RAGENT` 数据库中已经导入的 ADS 与 DWS V4 表结构。
+
+当前版本只保留：
+
+- ADS 层：4 张表
+- DWS 层：只选用 V4 版本，6 张表
+
+数据来源：
+
+- `/home/chenjy/r-data-agent/data-worker-design-master/sql/ads`
+- `/home/chenjy/r-data-agent/data-worker-design-master/sql/dws/v4`
+
+转换说明：
+
+- 原始 SQL 是 Doris 方言。
+- 当前已转换为 MySQL/InnoDB 可执行表结构。
+- Doris 的 `ENGINE=OLAP`、`AGGREGATE KEY`、`DISTRIBUTED BY`、`AUTO PARTITION`、`PROPERTIES` 等能力已移除。
+- Doris 的 `BITMAP`、`HLL` 字段在 MySQL 中转换为 `LONGBLOB`。
+- 这些 `LONGBLOB` 字段用于保留结构含义，但在 MySQL 中不具备 Doris Bitmap 原生计算能力。
+- `ads_query_examples.sql` 是查询示例文件，不包含建表语句，因此未导入。
+
+当前表清单：
+
+- `ads_buy_channel_roi_daily`
+- `ads_cohort_pivot`
+- `ads_material_daily`
+- `ads_op_game_overview_daily`
+- `dws_v4_ad_cost_daily`
+- `dws_v4_cohort_device`
+- `dws_v4_cohort_user`
+- `dws_v4_device_daily`
+- `dws_v4_user_daily`
+- `dws_v4_user_segment`
+
+
+## 整体分层理解
+
+### DWS V4 层
+
+DWS 是明细汇总层，负责保存更接近事实过程的聚合数据。
+
+本项目选用 DWS V4，是因为 V4 已经把旧版多个 DWS 表进行了整合：
+
+- `dws_v4_user_daily`：用户视角，每日/小时登录、注册、创角、付费。
+- `dws_v4_device_daily`：设备视角，每日/小时激活、新设备、买量/自然量拆分。
+- `dws_v4_ad_cost_daily`：广告花费视角，每日广告消耗、曝光、点击、转化。
+- `dws_v4_cohort_user`：用户队列视角，D0 到 D360 留存、付费留存、LTV。
+- `dws_v4_cohort_device`：设备队列视角，D0 到 D360 设备留存、设备 LTV、刷量风险指标。
+- `dws_v4_user_segment`：用户分群视角，保存分群标签与用户集合。
+
+DWS V4 更适合回答细粒度问题，例如：
+
+- 某一天某个小时的 DAU 是多少？
+- 某个广告素材带来的新增用户、付费用户、首日收入是多少？
+- 某个队列的 D7、D30、D90 留存如何？
+- 用户视角和设备视角的新增是否一致？
+- 哪些设备存在多账号风险？
+
+### ADS 层
+
+ADS 是应用服务层，面向业务看板和数据 Agent 直接查询。
+
+ADS 表通常是更宽、更好问、更适合业务口径的结果表：
+
+- `ads_buy_channel_roi_daily`：买量 ROI 日报。
+- `ads_material_daily`：素材效果日报。
+- `ads_cohort_pivot`：同期群宽表，把 D1/D3/D7/D30/D360 等节点摊平成列。
+- `ads_op_game_overview_daily`：运营游戏日报，不拆广告维度，更适合运营总览。
+
+ADS 更适合回答业务问题，例如：
+
+- 最近 30 天哪个广告平台 ROI 最高？
+- 哪个素材 30 日 LTV 最好？
+- 每个游戏的 DAU、收入、ARPU、D7 留存是多少？
+- 哪个渠道的买量新增最多？
+
+
+## 表 1：ads_buy_channel_roi_daily
+
+### 表定位
+
+`ads_buy_channel_roi_daily` 是买量 ROI 日报表。
+
+它面向买量团队，用于分析广告渠道、投放团队、广告平台、广告层级带来的新增、收入、留存和 LTV。
+
+### 数据粒度
+
+一行表示：
+
+某一天 + 某游戏 + 某渠道 + 某投放团队 + 某广告平台 + 某广告层级组合 的 ROI 指标。
+
+核心维度：
+
+- `stat_date`：统计日期，也是归因基准日。
+- `papp_id`：主游戏 ID。
+- `app_id`：子游戏 ID。
+- `cch_id`：渠道商 ID。
+- `bus_company_id`：业务公司。
+- `ptid`：父团队 ID。
+- `rctid`：子团队 ID。
+- `md_vid`：广告投放者账号。
+- `ad_pmedia`：广告平台，例如 bytedance、tencent、meta、google。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级，通常对应计划、广告组、创意。
+
+### 核心指标
+
+- `spend`：广告消耗，单位是元。
+- `platform_new_user_cnt`：平台新用户数。
+- `game_new_user_cnt`：游戏新用户数。
+- `new_device_cnt`：新增设备数。
+- `new_role_cnt`：新建角色数。
+- `pay_user_cnt`：付费用户数。
+- `first_pay_user_cnt`：首次付费用户数。
+- `pay_amt_sum`：当日收入，单位是分。
+- `retain_d1_cnt`、`retain_d7_cnt`、`retain_d30_cnt`、`retain_d90_cnt`：不同周期留存人数。
+- `ltv_1d`、`ltv_7d`、`ltv_30d`、`ltv_360d`：不同周期 LTV，单位是分。
+- `max_ltv_day_filled`：当前已经回填到哪个 LTV 周期。
+- `is_spend_synced`：广告消耗是否已经同步。
+
+### 常见计算
+
+ROI：
+
+```sql
+SUM(pay_amt_sum) / 100 / NULLIF(SUM(spend), 0)
+```
+
+D7 ROI：
+
+```sql
+SUM(ltv_7d) / 100 / NULLIF(SUM(spend), 0)
+```
+
+D30 ROI：
+
+```sql
+SUM(ltv_30d) / 100 / NULLIF(SUM(spend), 0)
+```
+
+D7 留存率：
+
+```sql
+SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+首付转化率：
+
+```sql
+SUM(first_pay_user_cnt) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 最近 30 天哪个广告平台 ROI 最高？
+- bytedance 在 2026 年 5 月的消耗、收入、ROI 分别是多少？
+- 哪个投手账号 `md_vid` 带来的 D7 ROI 最高？
+- 哪个广告层级的新增用户最多？
+- D30 ROI 低于 1 的投放组合有哪些？
+
+### 与其他表的关系
+
+- 可以和 `dws_v4_ad_cost_daily` 对比广告消耗口径。
+- 可以和 `ads_material_daily` 对比素材维度效果。
+- 可以和 `ads_cohort_pivot` 对比更完整的 D1-D360 留存与 LTV。
+
+
+## 表 2：ads_cohort_pivot
+
+### 表定位
+
+`ads_cohort_pivot` 是同期群透视宽表。
+
+它把一个新增队列从 D0 到 D360 的留存、付费留存、LTV、累计付费用户等指标摊平成一行，方便数据 Agent 直接查询。
+
+### 数据粒度
+
+一行表示：
+
+某个进入日期 + 某游戏 + 某渠道 + 某广告维度 + 某用户类型 的完整生命周期队列。
+
+核心维度：
+
+- `enter_date`：新增日期，也是队列起点。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道维度。
+- `bus_company_id`：业务公司。
+- `is_platform_new_user`：是否平台新用户。
+- `ad_pmedia`：广告平台。
+- `ad_cch_id`：广告渠道 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：广告素材 ID。
+- `ad_material_type`：素材类型。
+- `ad_position`：广告版位。
+- `ad_link_id`：广告链路 ID。
+
+### 核心指标
+
+队列规模：
+
+- `enter_user_cnt`：D0 新增用户数。
+- `enter_device_cnt`：D0 新增设备数。
+- `enter_pay_user_cnt`：D0 付费用户数。
+- `enter_pay_device_cnt`：D0 付费设备数。
+
+活跃留存：
+
+- `retain_d1_cnt`
+- `retain_d3_cnt`
+- `retain_d7_cnt`
+- `retain_d14_cnt`
+- `retain_d30_cnt`
+- `retain_d60_cnt`
+- `retain_d90_cnt`
+- `retain_d180_cnt`
+- `retain_d360_cnt`
+
+设备留存：
+
+- `d_retain_d1_cnt`
+- `d_retain_d7_cnt`
+- `d_retain_d30_cnt`
+- `d_retain_d90_cnt`
+- `d_retain_d360_cnt`
+
+付费留存：
+
+- `pay_retain_d1_cnt`
+- `pay_retain_d7_cnt`
+- `pay_retain_d30_cnt`
+- `pay_retain_d360_cnt`
+
+LTV：
+
+- `ltv_1d`
+- `ltv_3d`
+- `ltv_7d`
+- `ltv_14d`
+- `ltv_30d`
+- `ltv_60d`
+- `ltv_90d`
+- `ltv_180d`
+- `ltv_360d`
+
+累计付费：
+
+- `cumulative_pay_user_d7`
+- `cumulative_pay_user_d30`
+- `cumulative_pay_user_d90`
+- `cumulative_pay_user_d360`
+- `cumulative_pay_device_d30`
+- `cumulative_pay_device_d90`
+- `cumulative_pay_device_d360`
+
+回填状态：
+
+- `max_day_filled`：当前回填到第几天。
+- `is_finalized`：是否已经完整回填。
+- `last_update_ts`：最后更新时间。
+
+### 常见计算
+
+D7 留存率：
+
+```sql
+SUM(retain_d7_cnt) / NULLIF(SUM(enter_user_cnt), 0)
+```
+
+D30 留存率：
+
+```sql
+SUM(retain_d30_cnt) / NULLIF(SUM(enter_user_cnt), 0)
+```
+
+D30 人均 LTV：
+
+```sql
+SUM(ltv_30d) / 100 / NULLIF(SUM(enter_user_cnt), 0)
+```
+
+D360 人均 LTV：
+
+```sql
+SUM(ltv_360d) / 100 / NULLIF(SUM(enter_user_cnt), 0)
+```
+
+D30 累计付费率：
+
+```sql
+SUM(cumulative_pay_user_d30) / NULLIF(SUM(enter_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 哪个广告平台 D30 留存率最高？
+- 最近三个月各游戏的 D7、D30、D90 留存趋势如何？
+- 哪个素材 D360 LTV 最好？
+- 平台新用户和老用户试新游的 LTV 差异是多少？
+- 付费留存和活跃留存哪个渠道更稳定？
+
+### 与其他表的关系
+
+- 比 `dws_v4_cohort_user` 更适合直接问业务问题。
+- 比 `ads_buy_channel_roi_daily` 更完整，因为它包含更多生命周期节点。
+- 可与 `ads_material_daily` 在素材维度上互相校验。
+
+
+## 表 3：ads_material_daily
+
+### 表定位
+
+`ads_material_daily` 是广告素材日报表。
+
+它面向买量优化师，用于比较不同素材、素材类型、广告版位的新增、收入、LTV、留存和累计付费效果。
+
+### 数据粒度
+
+一行表示：
+
+某一天 + 某游戏 + 某广告平台 + 某广告素材 + 某广告版位 的效果。
+
+核心维度：
+
+- `stat_date`：统计日期，也是新增用户的进入日期。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道。
+- `bus_company_id`：业务公司。
+- `ad_pmedia`：广告平台。
+- `ad_cch_id`：广告渠道 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：素材 ID。
+- `ad_material_type`：素材类型，例如 video、image、text。
+- `ad_position`：广告版位。
+- `ad_link_id`：广告链路。
+
+### 核心指标
+
+新增与付费：
+
+- `platform_new_user_cnt`
+- `game_new_user_cnt`
+- `pay_user_cnt`
+- `pay_order_cnt`
+- `pay_amt_sum`
+- `statistical_pay_amt_sum`
+
+LTV：
+
+- `ltv_1d`
+- `ltv_3d`
+- `ltv_7d`
+- `ltv_14d`
+- `ltv_30d`
+- `ltv_90d`
+- `ltv_180d`
+- `ltv_360d`
+
+留存：
+
+- `retain_d1_cnt`
+- `retain_d3_cnt`
+- `retain_d7_cnt`
+- `retain_d14_cnt`
+- `retain_d30_cnt`
+- `retain_d90_cnt`
+- `retain_d180_cnt`
+- `retain_d360_cnt`
+
+付费留存：
+
+- `enter_pay_user_cnt`
+- `pay_retain_d1_cnt`
+- `pay_retain_d7_cnt`
+- `pay_retain_d30_cnt`
+- `pay_retain_d90_cnt`
+- `pay_retain_d180_cnt`
+- `pay_retain_d360_cnt`
+
+累计付费用户：
+
+- `cumulative_pay_user_d7`
+- `cumulative_pay_user_d30`
+- `cumulative_pay_user_d90`
+- `cumulative_pay_user_d180`
+- `cumulative_pay_user_d360`
+
+### 常见计算
+
+素材 D30 人均 LTV：
+
+```sql
+SUM(ltv_30d) / 100 / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+素材 D7 留存率：
+
+```sql
+SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+素材当日 ARPPU：
+
+```sql
+SUM(pay_amt_sum) / 100 / NULLIF(SUM(pay_user_cnt), 0)
+```
+
+D30 累计付费率：
+
+```sql
+SUM(cumulative_pay_user_d30) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 哪个素材 D30 LTV 最高？
+- 视频素材和图片素材哪个 D7 留存更好？
+- 哪个广告版位的付费率最高？
+- 最近 7 天哪个素材新增最多但 LTV 较低？
+- 哪些素材适合继续加预算？
+
+### 与其他表的关系
+
+- 与 `ads_buy_channel_roi_daily` 都可以分析买量效果，但本表更偏素材。
+- 与 `ads_cohort_pivot` 都包含生命周期指标，但本表更适合素材日报。
+- 与 `dws_v4_user_daily` 可以对齐新增、付费、收入基础口径。
+
+
+## 表 4：ads_op_game_overview_daily
+
+### 表定位
+
+`ads_op_game_overview_daily` 是运营游戏日报表。
+
+它不拆广告平台、广告素材、广告层级，而是按游戏和渠道看整体运营表现。
+
+### 数据粒度
+
+一行表示：
+
+某一天 + 某游戏 + 某渠道 的运营总览。
+
+核心维度：
+
+- `stat_date`：统计日期。
+- `papp_id`：主游戏 ID。
+- `app_id`：子游戏 ID。
+- `cch_id`：渠道商 ID。
+- `bus_company_id`：业务公司。
+
+### 核心指标
+
+活跃：
+
+- `dau`：日活跃用户数。
+- `dar`：日活跃角色数。
+- `login_cnt`：登录次数。
+
+新增：
+
+- `platform_new_user_cnt`：平台新用户数。
+- `game_new_user_cnt`：游戏新用户数。
+- `ad_new_user_cnt`：广告来源新用户。
+- `organic_new_user_cnt`：自然量新用户。
+- `new_role_cnt`：新建角色数。
+
+留存：
+
+- `retain_d1_cnt`
+- `retain_d3_cnt`
+- `retain_d7_cnt`
+- `retain_d14_cnt`
+- `retain_d30_cnt`
+
+收入：
+
+- `pay_user_cnt`
+- `first_pay_user_cnt`
+- `pay_amt_sum`
+- `statistical_pay_amt_sum`
+- `refund_amt_sum`
+
+LTV：
+
+- `ltv_7d`
+- `ltv_30d`
+
+状态：
+
+- `max_retain_day_filled`
+- `is_finalized`
+- `last_update_ts`
+
+### 常见计算
+
+ARPU：
+
+```sql
+SUM(pay_amt_sum) / 100 / NULLIF(SUM(dau), 0)
+```
+
+ARPPU：
+
+```sql
+SUM(pay_amt_sum) / 100 / NULLIF(SUM(pay_user_cnt), 0)
+```
+
+付费率：
+
+```sql
+SUM(pay_user_cnt) / NULLIF(SUM(dau), 0)
+```
+
+D7 留存率：
+
+```sql
+SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+广告新增占比：
+
+```sql
+SUM(ad_new_user_cnt) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 最近 7 天每个游戏的 DAU 是多少？
+- 哪款游戏收入最高？
+- 各游戏的 ARPU、ARPPU、付费率是多少？
+- 广告新增和自然新增的占比如何？
+- 哪个游戏 D7 留存最好？
+
+### 与其他表的关系
+
+- 它是运营侧最容易直接查询的总览表。
+- 如果问题涉及广告平台、素材、广告层级，应转向 `ads_buy_channel_roi_daily` 或 `ads_material_daily`。
+- 如果问题涉及小时级明细，应转向 `dws_v4_user_daily` 或 `dws_v4_device_daily`。
+
+
+## 表 5：dws_v4_ad_cost_daily
+
+### 表定位
+
+`dws_v4_ad_cost_daily` 是 DWS V4 广告消耗表。
+
+它保存广告平台同步回来的花费、曝光、点击、转化等指标，是 ROI 的成本侧来源。
+
+### 数据粒度
+
+一行表示：
+
+某一天 + 某游戏 + 某广告追踪码 + 某广告平台 + 某广告账号 + 某广告层级 的花费数据。
+
+核心维度：
+
+- `stat_date`：广告花费发生日。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道。
+- `md_traceid`：广告追踪码。
+- `ad_pmedia`：广告平台。
+- `ad_cch_id`：广告渠道 ID。
+- `ad_account_id`：广告账号 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：广告素材 ID。
+- `ad_position`：广告版位。
+- `currency`：货币。
+
+### 核心指标
+
+- `cost_amt`：广告花费，单位是分。
+- `impression_cnt`：曝光次数。
+- `click_cnt`：点击次数。
+- `platform_convert_cnt`：广告平台上报转化数。
+- `is_finalized`：数据状态，0 表示临时值，1 表示 T+1 精确，2 表示最终结算。
+- `sync_ts`：广告 API 同步时间戳。
+
+### 常见计算
+
+CTR：
+
+```sql
+SUM(click_cnt) / NULLIF(SUM(impression_cnt), 0)
+```
+
+CVR：
+
+```sql
+SUM(platform_convert_cnt) / NULLIF(SUM(click_cnt), 0)
+```
+
+CPM：
+
+```sql
+SUM(cost_amt) / 100 / NULLIF(SUM(impression_cnt), 0) * 1000
+```
+
+CPC：
+
+```sql
+SUM(cost_amt) / 100 / NULLIF(SUM(click_cnt), 0)
+```
+
+CPA：
+
+```sql
+SUM(cost_amt) / 100 / NULLIF(SUM(platform_convert_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 最近 30 天哪个广告平台消耗最多？
+- 哪个广告账号 CTR 最高？
+- 哪个广告层级 CPA 最低？
+- 哪些广告还没有最终结算？
+- 某个素材的点击率和转化率是多少？
+
+### 与其他表的关系
+
+- 可以与 `ads_buy_channel_roi_daily` 共同计算 ROI。
+- 可以与 `dws_v4_user_daily` 按 `md_traceid`、广告层级、日期关联，分析消耗到注册/付费的转化。
+- 可以与 `ads_material_daily` 按素材维度关联，分析素材花费与 LTV。
+
+
+## 表 6：dws_v4_cohort_device
+
+### 表定位
+
+`dws_v4_cohort_device` 是设备队列表。
+
+它从设备视角追踪一个新增设备队列在 D0 到 D360 的留存、付费和累计 LTV。
+
+### 数据粒度
+
+一行表示：
+
+某个设备进入日期 + 某小时 + 某游戏 + 某广告归因维度 + 某个 `day_n` 的设备队列指标。
+
+核心维度：
+
+- `enter_date`：设备进入日期。
+- `enter_hour`：设备进入小时。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道。
+- `app_type`：游戏类型。
+- `md_traceid`：广告追踪码。
+- `ad_cch_id`：广告渠道 ID。
+- `ad_account_id`：广告账号 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：广告素材 ID。
+- `ad_position`：广告版位。
+- `day_n`：进入后第 N 天。
+
+### 核心指标
+
+队列基数：
+
+- `d0_enter_device_cnt`：D0 进入设备数。
+- `d0_pay_device_cnt`：D0 付费设备数。
+- `d0_pay_amt`：D0 充值金额，单位分。
+
+留存：
+
+- `retain_device_cnt`：第 N 天留存设备数。
+- `pay_retain_device_cnt`：D0 付费设备在第 N 天仍留存的数量。
+
+付费：
+
+- `day_n_pay_amt`：第 N 天充值金额。
+- `day_n_pay_device_cnt`：第 N 天付费设备数。
+- `day_n_pay_order_cnt`：第 N 天付费订单数。
+
+累计：
+
+- `cum_pay_amt`：D0 到 DN 累计充值金额。
+- `cum_pay_order_cnt`：累计付费订单数。
+- `cum_pay_device_cnt`：累计付费设备数。
+
+风控：
+
+- `uid_cnt_on_device`：第 N 天设备上付费的不同 uid 数，用于识别多账号或刷量风险。
+
+Bitmap 字段：
+
+- `d0_enter_device_bitmap`
+- `d0_pay_device_bitmap`
+- `retain_device_bitmap`
+- `pay_retain_device_bitmap`
+- `day_n_pay_device_bitmap`
+- `cum_pay_device_bitmap`
+
+这些字段在 Doris 中用于精确去重，在 MySQL 中是模拟二进制字段，不建议直接计算。
+
+### 常见计算
+
+设备 D7 留存率：
+
+```sql
+SUM(retain_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)
+```
+
+设备 D30 LTV：
+
+```sql
+SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_device_cnt), 0)
+```
+
+D0 设备付费率：
+
+```sql
+SUM(d0_pay_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)
+```
+
+设备多账号风险均值：
+
+```sql
+SUM(uid_cnt_on_device) / NULLIF(SUM(day_n_pay_device_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 设备视角 D7 留存率是多少？
+- 哪个广告平台的设备 D30 LTV 最高？
+- 哪个素材的设备付费率最好？
+- 哪些广告维度存在多账号设备风险？
+- 用户视角和设备视角的留存差异是多少？
+
+### 与其他表的关系
+
+- 和 `dws_v4_cohort_user` 是一对视角互补：一个看设备，一个看用户。
+- 和 `dws_v4_device_daily` 可以共同分析激活到留存。
+- 和 `ads_cohort_pivot` 相比，本表更明细，因为每个 `day_n` 一行。
+
+
+## 表 7：dws_v4_cohort_user
+
+### 表定位
+
+`dws_v4_cohort_user` 是用户队列表。
+
+它从用户视角追踪一个进入用户队列在 D0 到 D360 的活跃留存、付费留存、每日付费和累计 LTV。
+
+### 数据粒度
+
+一行表示：
+
+某个用户进入日期 + 某小时 + 某游戏 + 某广告归因维度 + 某个 `day_n` 的用户队列指标。
+
+核心维度：
+
+- `enter_date`：用户进入日期。
+- `enter_hour`：用户进入小时。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道。
+- `app_type`：游戏类型。
+- `md_traceid`：广告追踪码。
+- `ad_cch_id`：广告渠道 ID。
+- `ad_account_id`：广告账号 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：广告素材 ID。
+- `ad_position`：广告版位。
+- `day_n`：进入后第 N 天。
+
+### 核心指标
+
+队列基数：
+
+- `d0_enter_user_cnt`：D0 进入用户数。
+- `d0_reg_user_cnt`：D0 注册用户数。
+- `d0_pay_user_cnt`：D0 付费用户数。
+- `d0_pay_amt`：D0 充值金额，单位分。
+
+留存：
+
+- `retain_user_cnt`：第 N 天留存用户数。
+- `pay_retain_user_cnt`：D0 付费用户在第 N 天仍留存的数量。
+
+付费：
+
+- `day_n_pay_amt`：第 N 天充值金额。
+- `day_n_pay_user_cnt`：第 N 天付费用户数。
+- `day_n_pay_order_cnt`：第 N 天付费订单数。
+
+累计：
+
+- `cum_pay_amt`：D0 到 DN 累计充值金额。
+- `cum_pay_order_cnt`：累计付费订单数。
+- `cum_pay_user_cnt`：累计付费用户数。
+
+Bitmap 字段：
+
+- `d0_enter_user_bitmap`
+- `d0_pay_user_bitmap`
+- `retain_user_bitmap`
+- `pay_retain_user_bitmap`
+- `day_n_pay_user_bitmap`
+- `cum_pay_user_bitmap`
+
+这些字段在 Doris 中用于 Bitmap 精确去重，在 MySQL 中保留为 `LONGBLOB`，主要用于结构兼容。
+
+### 常见计算
+
+用户 D7 留存率：
+
+```sql
+SUM(retain_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)
+```
+
+用户 D30 LTV：
+
+```sql
+SUM(cum_pay_amt) / 100 / NULLIF(SUM(d0_enter_user_cnt), 0)
+```
+
+D0 付费率：
+
+```sql
+SUM(d0_pay_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)
+```
+
+第 N 天 ARPPU：
+
+```sql
+SUM(day_n_pay_amt) / 100 / NULLIF(SUM(day_n_pay_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 某个游戏 D7、D30、D90 留存率是多少？
+- 哪个广告平台的 D30 LTV 最高？
+- 哪个广告素材带来的用户首日付费率最高？
+- 某个队列从 D0 到 D30 的累计收入增长如何？
+- D0 付费用户的 D7 留存表现如何？
+
+### 与其他表的关系
+
+- 是 `ads_cohort_pivot` 的更明细来源。
+- 和 `dws_v4_user_daily` 都是用户视角，但本表是队列生命周期，`dws_v4_user_daily` 是每日流量。
+- 和 `dws_v4_cohort_device` 可以对比用户与设备口径差异。
+
+
+## 表 8：dws_v4_device_daily
+
+### 表定位
+
+`dws_v4_device_daily` 是设备日流量表。
+
+它按小时统计设备激活、新设备、广告新增设备、自然新增设备等指标。
+
+### 数据粒度
+
+一行表示：
+
+某一天 + 某小时 + 某游戏 + 某广告归因维度 的设备流量指标。
+
+核心维度：
+
+- `stat_date`：统计日期。
+- `stat_hour`：统计小时。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道。
+- `app_type`：游戏类型。
+- `md_traceid`：广告追踪码。
+- `ad_cch_id`：广告渠道 ID。
+- `ad_account_id`：广告账号 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：广告素材 ID。
+- `ad_position`：广告版位。
+
+### 核心指标
+
+- `activate_cnt`：总激活次数。
+- `new_device_cnt`：新设备数。
+- `ad_new_device_cnt`：广告来源新设备数。
+- `organic_new_device_cnt`：自然量新设备数。
+- `new_device_bitmap`：新设备 Bitmap，在 MySQL 中是 `LONGBLOB` 占位。
+- `is_finalized`：是否 T+1 精确。
+
+### 常见计算
+
+广告新设备占比：
+
+```sql
+SUM(ad_new_device_cnt) / NULLIF(SUM(new_device_cnt), 0)
+```
+
+自然新设备占比：
+
+```sql
+SUM(organic_new_device_cnt) / NULLIF(SUM(new_device_cnt), 0)
+```
+
+小时新设备趋势：
+
+```sql
+SELECT stat_hour, SUM(new_device_cnt)
+FROM dws_v4_device_daily
+GROUP BY stat_hour
+ORDER BY stat_hour
+```
+
+### 适合数据 Agent 回答的问题
+
+- 今天每小时新增设备走势如何？
+- 哪个广告平台带来的新设备最多？
+- 最近 7 天自然新增设备占比是多少？
+- 某个游戏设备激活峰值在几点？
+- 设备新增和用户新增是否匹配？
+
+### 与其他表的关系
+
+- 与 `dws_v4_user_daily` 一起分析用户和设备口径。
+- 与 `dws_v4_cohort_device` 一起分析从激活到留存的生命周期。
+- 与 `dws_v4_ad_cost_daily` 可分析广告成本到新设备的转化。
+
+
+## 表 9：dws_v4_user_daily
+
+### 表定位
+
+`dws_v4_user_daily` 是用户日流量表。
+
+它按小时统计登录、新增进入、注册、创角、付费、首付等指标，是 DWS V4 中最重要的用户事实汇总表之一。
+
+### 数据粒度
+
+一行表示：
+
+某一天 + 某小时 + 某游戏 + 某广告归因维度 的用户流量和付费指标。
+
+核心维度：
+
+- `stat_date`：统计日期。
+- `stat_hour`：统计小时。
+- `papp_id`、`app_id`、`cch_id`：游戏和渠道。
+- `app_type`：游戏类型。
+- `md_traceid`：广告追踪码。
+- `ad_cch_id`：广告渠道 ID。
+- `ad_account_id`：广告账号 ID。
+- `tg_level_1`、`tg_level_2`、`tg_level_3`：广告层级。
+- `ad_material_id`：广告素材 ID。
+- `ad_position`：广告版位。
+
+### 核心指标
+
+登录：
+
+- `login_user_cnt`：登录用户数，也可理解为小时级 DAU 分片。
+- `login_device_cnt`：登录设备数。
+- `login_user_bitmap`：登录用户 Bitmap，占位字段。
+
+新增与注册：
+
+- `new_enter_user_cnt`：新增进入用户数。
+- `new_enter_device_cnt`：新增进入设备数。
+- `reg_user_cnt`：注册用户数。
+- `reg_device_cnt`：注册设备数。
+
+创角：
+
+- `new_role_cnt`：新建角色数。
+- `new_enter_role_cnt`：新增进入用户新建角色数。
+
+付费：
+
+- `trans_amt`：充值金额，单位分。
+- `pay_user_cnt`：付费用户数。
+- `pay_order_cnt`：付费订单数。
+- `first_pay_amt`：首次付费金额，单位分。
+- `first_pay_user_cnt`：首次付费用户数。
+
+状态：
+
+- `is_finalized`：是否 T+1 精确。
+
+### 常见计算
+
+DAU：
+
+```sql
+SUM(login_user_cnt)
+```
+
+收入：
+
+```sql
+SUM(trans_amt) / 100
+```
+
+ARPU：
+
+```sql
+SUM(trans_amt) / 100 / NULLIF(SUM(login_user_cnt), 0)
+```
+
+ARPPU：
+
+```sql
+SUM(trans_amt) / 100 / NULLIF(SUM(pay_user_cnt), 0)
+```
+
+付费率：
+
+```sql
+SUM(pay_user_cnt) / NULLIF(SUM(login_user_cnt), 0)
+```
+
+注册转首付率：
+
+```sql
+SUM(first_pay_user_cnt) / NULLIF(SUM(reg_user_cnt), 0)
+```
+
+创角率：
+
+```sql
+SUM(new_enter_role_cnt) / NULLIF(SUM(new_enter_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 今天每小时 DAU 和收入趋势如何？
+- 哪个游戏付费率最高？
+- 哪个广告素材带来的注册转首付率最好？
+- 最近 7 天 ARPU 变化如何？
+- 哪个时间段创角率最低？
+
+### 与其他表的关系
+
+- 是 `ads_op_game_overview_daily` 的明细来源之一。
+- 与 `dws_v4_ad_cost_daily` 可共同分析成本到注册、付费的漏斗。
+- 与 `dws_v4_cohort_user` 区别在于：本表看日流量，cohort 表看生命周期。
+
+
+## 表 10：dws_v4_user_segment
+
+### 表定位
+
+`dws_v4_user_segment` 是用户分群表。
+
+它用于保存满足某种条件的用户集合，例如高价值用户、D7 留存用户、新付费用户、风险用户等。
+
+### 数据粒度
+
+一行表示：
+
+某个进入日期 + 某游戏 + 某渠道 + 某分群标签 的用户集合。
+
+核心维度：
+
+- `enter_date`：入场日期。
+- `papp_id`：主游戏 ID。
+- `app_id`：子游戏 ID。
+- `cch_id`：渠道商 ID。
+- `segment_key`：分群标签。
+
+### 核心指标
+
+- `user_bitmap`：分群用户 Bitmap，在 MySQL 中是 `LONGBLOB` 占位。
+- `user_cnt`：分群用户数。
+- `computed_ts`：分群计算完成时间戳。
+
+### 常见分群标签示例
+
+当前演示数据中包含类似：
+
+- `new_payer_d7`：D7 新付费用户。
+- `high_value_user`：高价值用户。
+- `retained_d7`：D7 留存用户。
+- `organic_user`：自然量用户。
+- `risk_multi_uid_device`：多账号设备风险用户。
+
+### 常见计算
+
+某分群规模：
+
+```sql
+SUM(user_cnt)
+```
+
+某分群占新增用户比例，需要与 cohort 或 ADS 表关联后计算：
+
+```sql
+SUM(s.user_cnt) / NULLIF(SUM(c.enter_user_cnt), 0)
+```
+
+### 适合数据 Agent 回答的问题
+
+- 最近 30 天高价值用户有多少？
+- 哪个游戏的 D7 留存用户最多？
+- 自然量用户占比是多少？
+- 多账号风险用户集中在哪些游戏？
+- 某个分群在不同日期的变化趋势如何？
+
+### 与其他表的关系
+
+- 在 Doris 原设计中，可以通过 Bitmap 与 `dws_v4_cohort_user` 做交集分析。
+- 在当前 MySQL 演示环境中，建议主要使用 `user_cnt` 做统计。
+- 如果数据 Agent 问分群趋势，本表是最直接的入口。
+
+
+## 推荐给数据 Agent 的表选择策略
+
+### 问运营总览
+
+优先使用：
+
+- `ads_op_game_overview_daily`
+
+适合问题：
+
+- DAU
+- 收入
+- ARPU
+- ARPPU
+- 付费率
+- 游戏整体留存
+
+### 问买量 ROI
+
+优先使用：
+
+- `ads_buy_channel_roi_daily`
+
+必要时关联：
+
+- `dws_v4_ad_cost_daily`
+- `ads_material_daily`
+
+适合问题：
+
+- ROI
+- 消耗
+- 广告平台表现
+- 投手表现
+- 广告层级表现
+
+### 问素材效果
+
+优先使用：
+
+- `ads_material_daily`
+
+适合问题：
+
+- 素材新增
+- 素材 LTV
+- 素材留存
+- 素材付费率
+- 素材类型对比
+
+### 问生命周期、留存、LTV
+
+优先使用：
+
+- `ads_cohort_pivot`
+
+需要更细粒度时使用：
+
+- `dws_v4_cohort_user`
+- `dws_v4_cohort_device`
+
+适合问题：
+
+- D1/D7/D30/D90/D360 留存
+- D30/D360 LTV
+- 用户队列生命周期
+- 设备队列生命周期
+
+### 问小时级趋势
+
+优先使用：
+
+- `dws_v4_user_daily`
+- `dws_v4_device_daily`
+
+适合问题：
+
+- 每小时 DAU
+- 每小时收入
+- 每小时新增用户
+- 每小时新增设备
+- 用户与设备口径对比
+
+### 问分群
+
+优先使用：
+
+- `dws_v4_user_segment`
+
+适合问题：
+
+- 高价值用户
+- D7 留存用户
+- 自然量用户
+- 风险用户
+- 分群规模趋势
+
+
+## 字段单位与口径提醒
+
+### 金额单位
+
+需要特别注意：
+
+- `ads_buy_channel_roi_daily.spend` 的单位是元。
+- 大多数收入、LTV、成本字段的单位是分。
+- 例如 `pay_amt_sum`、`ltv_30d`、`cost_amt`、`trans_amt` 通常需要除以 100 转成元。
+
+常见转换：
+
+```sql
+SUM(pay_amt_sum) / 100
+SUM(trans_amt) / 100
+SUM(ltv_30d) / 100
+SUM(cost_amt) / 100
+```
+
+### 留存率口径
+
+用户留存率：
+
+```sql
+SUM(retain_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)
+```
+
+ADS 宽表留存率：
+
+```sql
+SUM(retain_d7_cnt) / NULLIF(SUM(enter_user_cnt), 0)
+```
+
+运营日报留存率：
+
+```sql
+SUM(retain_d7_cnt) / NULLIF(SUM(game_new_user_cnt), 0)
+```
+
+### ROI 口径
+
+当日 ROI：
+
+```sql
+SUM(pay_amt_sum) / 100 / NULLIF(SUM(spend), 0)
+```
+
+长期 ROI：
+
+```sql
+SUM(ltv_30d) / 100 / NULLIF(SUM(spend), 0)
+```
+
+如果使用 `dws_v4_ad_cost_daily.cost_amt`：
+
+```sql
+SUM(revenue_amount_in_cent) / NULLIF(SUM(cost_amt), 0)
+```
+
+因为二者都是分，可以不除以 100。
+
+### Bitmap 字段提醒
+
+以下字段在 MySQL 中是 `LONGBLOB`：
+
+- `*_bitmap`
+- `user_bitmap`
+
+它们是为了兼容 Doris 表结构而保留。
+
+当前 MySQL 演示数据中，这些字段是模拟二进制值，不适合直接做 Bitmap 计算。
+
+数据 Agent 生成 SQL 时，应优先使用对应的计数字段，例如：
+
+- `login_user_cnt`
+- `new_device_cnt`
+- `retain_user_cnt`
+- `cum_pay_user_cnt`
+- `user_cnt`
+
+
+## 已注入的演示数据说明
+
+当前本地 MySQL `RAGENT` 中已经注入随机但合理的演示数据。
+
+数据范围：
+
+- 起始日期：2025-06-02
+- 结束日期：2026-06-02
+
+演示维度：
+
+- 游戏：`100101`、`100102`、`200201`
+- 广告平台：`bytedance`、`tencent`、`meta`、`google`
+- 自然量：`organic`
+
+每张表行数：
+
+- `ads_buy_channel_roi_daily`：4392
+- `ads_cohort_pivot`：5490
+- `ads_material_daily`：4392
+- `ads_op_game_overview_daily`：1098
+- `dws_v4_ad_cost_daily`：4392
+- `dws_v4_cohort_device`：43725
+- `dws_v4_cohort_user`：43725
+- `dws_v4_device_daily`：21960
+- `dws_v4_user_daily`：21960
+- `dws_v4_user_segment`：5490
+
+演示数据特征：
+
+- 月度 D0 ROI 大约在 1.36 到 1.40 之间。
+- D7 留存率大约在 25% 左右。
+- 不同广告平台、素材、游戏之间有差异，适合测试排序、聚合、过滤、对比类问题。
+- 较新的日期不会填满 D30/D90/D360 指标，符合真实回填逻辑。
+
+
+## 转换结果日志
+
+OK dw_ads.ads_buy_channel_roi_daily <- ads/ads_buy_channel_roi_daily.sql
+OK dw_ads.ads_cohort_pivot <- ads/ads_cohort_pivot.sql
+OK dw_ads.ads_material_daily <- ads/ads_material_daily.sql
+OK dw_ads.ads_op_game_overview_daily <- ads/ads_op_game_overview_daily.sql
+SKIP no CREATE TABLE: ads/ads_query_examples.sql
+OK dw_dws.dws_v4_ad_cost_daily <- dws/v4/dws_v4_ad_cost_daily.sql
+OK dw_dws.dws_v4_cohort_device <- dws/v4/dws_v4_cohort_device.sql
+OK dw_dws.dws_v4_cohort_user <- dws/v4/dws_v4_cohort_user.sql
+OK dw_dws.dws_v4_device_daily <- dws/v4/dws_v4_device_daily.sql
+OK dw_dws.dws_v4_user_daily <- dws/v4/dws_v4_user_daily.sql
+OK dw_dws.dws_v4_user_segment <- dws/v4/dws_v4_user_segment.sql
+
+converted_tables=10

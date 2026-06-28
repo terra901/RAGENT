@@ -1,0 +1,9 @@
+{
+  "dimension_id": "currency",
+  "name": "货币",
+  "field_by_table": {
+    "dws_v4_ad_cost_daily": "currency"
+  },
+  "description": "用于按「货币」筛选、分组、排序或下钻的分类维度。字段映射覆盖 1 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+  "query_guidance": "当用户提到「货币」或其业务同义词时优先召回该维度；适用表范围：dws_v4_ad_cost_daily。"
+}

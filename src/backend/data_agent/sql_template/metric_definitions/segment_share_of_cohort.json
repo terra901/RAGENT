@@ -1,0 +1,17 @@
+{
+  "metric_id": "segment_share_of_cohort",
+  "name": "分群占队列比例",
+  "default_unit": "ratio",
+  "aggregation": "ratio",
+  "expr_by_table": {},
+  "expr_by_template": {
+    "segment_share_with_cohort": "s.segment_user_cnt / NULLIF(c.enter_user_cnt, 0)"
+  },
+  "depends_on_metrics": [
+    "segment_user_cnt",
+    "cohort_enter_user_cnt"
+  ],
+  "description": "「分群占队列比例」指标，默认单位为 ratio，聚合方式为 ratio。模板级表达式适用于 segment_share_with_cohort。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+  "business_context": "用于衡量用户分群规模或分群占比。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「segment_share_of_cohort」。"
+}

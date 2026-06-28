@@ -1,0 +1,95 @@
+{
+  "template_name": "cohort_device_dayn_risk_analysis",
+  "name": "设备队列 day_n 生命周期与风险查询",
+  "description": "用于在 dws_v4_cohort_device 中按 day_n 查询设备留存、设备 LTV、D0 设备付费率、多账号设备风险。",
+  "intent": "data_query",
+  "analysis_types": [
+    "cohort",
+    "device",
+    "day_n",
+    "risk",
+    "ltv",
+    "retention"
+  ],
+  "source_tables": [
+    "dws_v4_cohort_device"
+  ],
+  "required_slots": [
+    "metrics",
+    "time",
+    "day_n"
+  ],
+  "optional_slots": [
+    "dimensions",
+    "filters",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "supported_metrics": [
+    "cohort_enter_device_cnt",
+    "cohort_d0_pay_rate",
+    "retention_d7",
+    "retention_d30",
+    "ltv_30d_per_user",
+    "ltv_360d_per_user",
+    "multi_uid_device_risk_avg"
+  ],
+  "supported_dimensions": [
+    "date",
+    "hour",
+    "parent_app",
+    "app",
+    "channel",
+    "app_type",
+    "md_traceid",
+    "ad_channel",
+    "ad_account",
+    "campaign",
+    "ad_group",
+    "creative",
+    "material",
+    "ad_position",
+    "day_n"
+  ],
+  "related_questions": [
+    "设备视角 D7 留存率是多少？",
+    "哪个素材的设备付费率最好？",
+    "哪些广告维度存在多账号设备风险？",
+    "用户视角和设备视角的留存差异是多少？"
+  ],
+  "unsupported_cases": [],
+  "sql_params": [
+    "select_dimension_exprs",
+    "select_metric_exprs",
+    "source_table",
+    "time_field",
+    "time_range",
+    "where_filters",
+    "group_by_fields",
+    "having",
+    "order_by",
+    "limit"
+  ],
+  "template_sql_lines": [
+    "SELECT",
+    "  {{select_dimension_exprs}}",
+    "  {{select_metric_exprs}}",
+    "FROM {{source_table}}",
+    "WHERE {{time_field}} BETWEEN {{start_date}} AND {{end_date}}",
+    "  {{where_filters}}",
+    "{{group_by_clause}}",
+    "{{having_clause}}",
+    "{{order_by_clause}}",
+    "{{limit_clause}}"
+  ],
+  "compiler_notes": [
+    "模板描述字段用于召回和编译约束；真正 SQL 生成仍必须通过安全校验和字段存在性校验。"
+  ],
+  "priority": 74,
+  "business_description": "设备队列 day_n 生命周期与风险查询。用于在 dws_v4_cohort_device 中按 day_n 查询设备留存、设备 LTV、D0 设备付费率、多账号设备风险。 来源表：dws_v4_cohort_device；分析类型：cohort、device、day_n、risk、ltv、retention；支持 7 个指标和 15 个维度。",
+  "selection_guidance": "当用户问题需要cohort、device、day_n、risk、ltv、retention，且业务范围落在 dws_v4_cohort_device 时优先选择该模板。典型问题：设备视角 D7 留存率是多少？；哪个素材的设备付费率最好？；哪些广告维度存在多账号设备风险？。",
+  "slot_guidance": "必填槽位：metrics、time、day_n；可选槽位：dimensions、filters、having、order_by、limit。缺少 time 时应向用户澄清或采用系统默认时间范围；filters/having/order_by/limit 只能使用支持的字段和指标。",
+  "output_contract": "输出列应包含用户请求的维度列和指标列；指标别名必须与 metric_id 保持一致，模板级派生指标必须使用 metric_definitions 中 expr_by_template 对应的别名。",
+  "compiler_guidance": "编译时从 supported_dimensions 中选择 group/filter 字段，从 supported_metrics 中选择 select 指标；所有 source_tables 必须来自当前 schema。"
+}

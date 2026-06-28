@@ -1,0 +1,13 @@
+{
+  "metric_id": "cohort_d0_pay_rate",
+  "name": "D0 付费率",
+  "default_unit": "ratio",
+  "aggregation": "ratio",
+  "expr_by_table": {
+    "dws_v4_cohort_user": "SUM(d0_pay_user_cnt) / NULLIF(SUM(d0_enter_user_cnt), 0)",
+    "dws_v4_cohort_device": "SUM(d0_pay_device_cnt) / NULLIF(SUM(d0_enter_device_cnt), 0)"
+  },
+  "description": "「D0 付费率」指标，默认单位为 ratio，聚合方式为 ratio。单表表达式适用于 dws_v4_cohort_user、dws_v4_cohort_device。ratio 类指标必须先聚合分子和分母，再相除，避免平均比率造成口径偏差。",
+  "business_context": "用于回答与「D0 付费率」相关的排序、趋势、对比和汇总问题。",
+  "query_guidance": "生成 SQL 时必须根据当前 source_table 或 template_name 选择匹配表达式；输出别名固定使用 metric_id「cohort_d0_pay_rate」。"
+}

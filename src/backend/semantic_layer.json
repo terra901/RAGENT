@@ -1,0 +1,107 @@
+{
+  "_comment": "RAGENT MySQL 业务库语义层：将业务术语映射到 ADS/DWS 表和列",
+  "mappings": [
+    {
+      "term": "ROI",
+      "table_name": "ads_buy_channel_roi_daily",
+      "column_name": "spend",
+      "description": "买量 ROI 通常用 SUM(pay_amt_sum)/100/NULLIF(SUM(spend), 0) 或各周期 LTV/100/花费计算",
+      "aliases": ["投资回报率", "买量ROI", "回本"]
+    },
+    {
+      "term": "广告消耗",
+      "table_name": "ads_buy_channel_roi_daily",
+      "column_name": "spend",
+      "description": "广告渠道层级消耗金额，单位元",
+      "aliases": ["消耗", "花费", "广告花费", "spend"]
+    },
+    {
+      "term": "收入",
+      "table_name": "ads_op_game_overview_daily",
+      "column_name": "pay_amt_sum",
+      "description": "运营口径收入，单位分；展示金额时通常除以 100",
+      "aliases": ["充值", "流水", "营收", "付费金额"]
+    },
+    {
+      "term": "财务收入",
+      "table_name": "ads_op_game_overview_daily",
+      "column_name": "statistical_pay_amt_sum",
+      "description": "财务口径收入，单位分",
+      "aliases": ["财务口径", "统计充值金额"]
+    },
+    {
+      "term": "DAU",
+      "table_name": "ads_op_game_overview_daily",
+      "column_name": "dau",
+      "description": "日活跃用户数",
+      "aliases": ["日活", "活跃用户", "日活用户"]
+    },
+    {
+      "term": "新增用户",
+      "table_name": "ads_buy_channel_roi_daily",
+      "column_name": "game_new_user_cnt",
+      "description": "游戏新用户数，买量和运营分析常用新增口径",
+      "aliases": ["新用户", "游戏新增", "新增人数"]
+    },
+    {
+      "term": "平台新用户",
+      "table_name": "ads_buy_channel_roi_daily",
+      "column_name": "platform_new_user_cnt",
+      "description": "平台新用户数，enter_date=reg_date",
+      "aliases": ["平台注册", "平台新增"]
+    },
+    {
+      "term": "新增设备",
+      "table_name": "dws_v4_device_daily",
+      "column_name": "new_device_cnt",
+      "description": "新设备激活数，设备视角新增指标",
+      "aliases": ["新设备", "设备新增", "激活设备"]
+    },
+    {
+      "term": "留存",
+      "table_name": "ads_cohort_pivot",
+      "column_name": "retain_d7_cnt",
+      "description": "同期群宽表中的 D1/D3/D7/D30/D360 等留存人数",
+      "aliases": ["次留", "7日留存", "D7留存", "D30留存"]
+    },
+    {
+      "term": "LTV",
+      "table_name": "ads_cohort_pivot",
+      "column_name": "ltv_30d",
+      "description": "同期群 LTV，单位分；展示金额时通常除以 100",
+      "aliases": ["用户价值", "生命周期价值", "D7 LTV", "D30 LTV"]
+    },
+    {
+      "term": "素材",
+      "table_name": "ads_material_daily",
+      "column_name": "ad_material_id",
+      "description": "广告素材日报，分析素材带来的新增、付费、LTV 和留存",
+      "aliases": ["广告素材", "素材ID", "创意素材"]
+    },
+    {
+      "term": "广告平台",
+      "table_name": "ads_buy_channel_roi_daily",
+      "column_name": "ad_pmedia",
+      "description": "主广告平台，例如 bytedance、tencent、meta、google",
+      "aliases": ["媒体", "投放平台", "ad_pmedia"]
+    }
+  ],
+  "table_descriptions": {
+    "ads_buy_channel_roi_daily": "ADS 买量 ROI 日报，面向广告渠道、投放团队、广告平台和广告层级分析消耗、新增、留存、LTV、收入和 ROI。",
+    "ads_material_daily": "ADS 素材效果日报，面向广告素材维度分析新增、付费、LTV、留存和付费留存。",
+    "ads_cohort_pivot": "ADS 同期群宽表，把 D1/D3/D7/D30/D360 留存、LTV、累计付费等指标摊平成列。",
+    "ads_op_game_overview_daily": "ADS 运营游戏日报，不拆广告层级，适合查询 DAU、收入、新增、留存和运营总览。",
+    "dws_v4_ad_cost_daily": "DWS V4 广告花费明细汇总，保存广告消耗、曝光、点击、转化等广告平台同步指标。",
+    "dws_v4_user_daily": "DWS V4 用户视角日/小时汇总，保存登录、注册、创角、付费、首付等用户指标。",
+    "dws_v4_device_daily": "DWS V4 设备视角日/小时汇总，保存激活、新设备、买量/自然量设备指标。",
+    "dws_v4_cohort_user": "DWS V4 用户队列明细，按 enter_date/day_n 跟踪留存、付费留存、LTV 和累计付费。",
+    "dws_v4_cohort_device": "DWS V4 设备队列明细，按 enter_date/day_n 跟踪设备留存、设备 LTV 和多账号风险指标。",
+    "dws_v4_user_segment": "DWS V4 用户分群表，保存分群标签、用户集合和用户数。"
+  },
+  "join_hints": {
+    "ads_buy_channel_roi_daily,dws_v4_ad_cost_daily": "ON ads_buy_channel_roi_daily.stat_date = dws_v4_ad_cost_daily.stat_date AND ads_buy_channel_roi_daily.papp_id = dws_v4_ad_cost_daily.papp_id AND ads_buy_channel_roi_daily.app_id = dws_v4_ad_cost_daily.app_id AND ads_buy_channel_roi_daily.cch_id = dws_v4_ad_cost_daily.cch_id AND ads_buy_channel_roi_daily.ad_pmedia = dws_v4_ad_cost_daily.ad_pmedia",
+    "ads_material_daily,ads_cohort_pivot": "ON ads_material_daily.stat_date = ads_cohort_pivot.enter_date AND ads_material_daily.papp_id = ads_cohort_pivot.papp_id AND ads_material_daily.app_id = ads_cohort_pivot.app_id AND ads_material_daily.cch_id = ads_cohort_pivot.cch_id AND ads_material_daily.ad_material_id = ads_cohort_pivot.ad_material_id",
+    "dws_v4_user_daily,dws_v4_device_daily": "ON dws_v4_user_daily.stat_date = dws_v4_device_daily.stat_date AND dws_v4_user_daily.stat_hour = dws_v4_device_daily.stat_hour AND dws_v4_user_daily.papp_id = dws_v4_device_daily.papp_id AND dws_v4_user_daily.app_id = dws_v4_device_daily.app_id AND dws_v4_user_daily.cch_id = dws_v4_device_daily.cch_id"
+  },
+  "sensitive_columns": {}
+}

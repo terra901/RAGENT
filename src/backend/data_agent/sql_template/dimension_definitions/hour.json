@@ -1,0 +1,13 @@
+{
+  "dimension_id": "hour",
+  "name": "小时",
+  "semantic_type": "time",
+  "field_by_table": {
+    "dws_v4_user_daily": "stat_hour",
+    "dws_v4_device_daily": "stat_hour",
+    "dws_v4_cohort_user": "enter_hour",
+    "dws_v4_cohort_device": "enter_hour"
+  },
+  "description": "用于按「小时」筛选、分组、排序或下钻的时间维度。字段映射覆盖 4 类表映射；生成 SQL 时必须选择当前 source_table 对应字段，不要跨表复用不属于该表的字段。",
+  "query_guidance": "当用户提到「小时」或其业务同义词时优先召回该维度；适用表范围：dws_v4_user_daily、dws_v4_device_daily、dws_v4_cohort_user、dws_v4_cohort_device。"
+}
