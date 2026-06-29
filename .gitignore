@@ -20,6 +20,7 @@ src/backend/data/*.db
 src/backend/data/*.sqlite*
 *.log
 logs/
+.runtime/
 
 # 参考资料体积很大，不作为 RAGENT 源码上传
 docs/frontend_example/LibreChat/
